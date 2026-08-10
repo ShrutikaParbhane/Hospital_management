@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+
+{% block title %}Doctor Dashboard - CareGrid{% endblock %}
+
+{% block content %}
+<div class="space-y-8 py-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Clinical Portal</h1>
+            <p class="text-slate-400 text-sm">Manage appointments, review patient details, and write prescriptions</p>
+        </div>
+    </div>
+
+    <!-- Main Layout Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        
+        <!-- Left Sidebar: Profile & Stats -->
+        <div class="lg:col-span-1 space-y-6">
+            <!-- Doctor Profile Card -->
+            <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm space-y-4">
+                <div class="flex items-center space-x-4 border-b border-slate-50 pb-4">
+                    <div class="w-12 h-12 rounded-full bg-teal-50 text-teal-600 text-lg flex items-center justify-center font-bold">
+                        Dr
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-slate-800 text-base leading-tight">{{ doctor.name }}</h2>
+                        <span class="text-xs text-slate-400 font-semibold">{{ doctor.specialization }}</span>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-sm text-slate-600">
+                    <div>
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Qualification</span>
+                        <span class="font-medium text-slate-700">{{ doctor.qualification }}</span>
+                    </div>
+                    <div>
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Experience</span>
+                        <span class="font-medium text-slate-700">{{ doctor.experience_years }} Years Practice</span>
+                    </div>
+                    <div>
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Consultation Fee</span>
+                        <span class="font-semibold text-slate-900">${{ doctor.consultation_fee }} per visit</span>
+                    </div>
+                    <div>
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Available Practice Days</span>
+                        <span class="font-medium text-teal-600">{{ doctor.available_days }}</span>
+                    </div>
+                    <div>
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Daily Shift Hours</span>
+                        <span class="font-medium text-slate-700">{{ doctor.slot_start_time }} to {{ doctor.slot_end_time }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Main Panel: Schedules -->
+        <div class="lg:col-span-3 space-y-8">
+            <!-- Appointments Table -->
+            <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
+                    <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                        <i class="fa-solid fa-clipboard-list text-teal-600"></i>
+                        <span>Scheduled Patient Consultations</span>
+                    </h3>
+                    <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-semibold">{{ appointments|length }} Bookings</span>
+                </div>
+                
+                <div class="divide-y divide-slate-50 max-h-[500px] overflow-y-auto">
+                    {% for app in appointments %}
+                        <div class="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-slate-50/50 transition-colors">
+                            <div class="space-y-1.5 flex-grow">
+                                <div class="flex items-center space-x-3">
+                                    <h4 class="font-bold text-slate-800 text-base">{{ app.patient_name }}</h4>
+                                    <div class="flex space-x-2">
+                                        <span class="text-[10px] bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded uppercase">{{ app.gender }}</span>
+                                        <span class="text-[10px] bg-rose-50 text-rose-600 font-semibold px-2 py-0.5 rounded uppercase">{{ app.blood_group }}</span>
+                                    </div>
+                                </div>
+                                <div class="text-xs text-slate-400 flex flex-wrap gap-x-4">
+                                    <span><i class="fa-solid fa-calendar mr-1"></i>{{ app.appointment_date }}</span>
+                                    <span><i class="fa-solid fa-clock mr-1"></i>{{ app.start_time }} - {{ app.end_time }}</span>
+                                    <span><i class="fa-solid fa-cake-candles mr-1"></i>DOB: {{ app.dob }}</span>
+                                </div>
+                                <p class="text-sm text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-100 italic">
+                                    "{{ app.reason }}"
+                                </p>
+                            </div>
+                            
+                            <div class="flex items-center space-x-3 self-stretch md:self-auto justify-end">
+                                {% if app.status == 'pending' or app.status == 'confirmed' %}
+                                    <button onclick="openDiagnoseModal({{ app.id }}, '{{ app.patient_name }}')"
+                                            class="bg-gradient-to-r from-teal-600 to-emerald-600 hover:shadow-lg hover:shadow-teal-500/20 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all">
+                                        Diagnose & Prescribe
+                                    </button>
+                                {% elif app.status == 'completed' %}
+                                    <span class="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-bold flex items-center space-x-1">
+                                        <i class="fa-solid fa-circle-check"></i>
+                                        <span>Completed</span>
+                                    </span>
+                                {% else %}
+                                    <span class="px-3 py-1.5 bg-slate-100 text-slate-500 border border-slate-200 rounded-full text-xs font-bold capitalize">
+                                        {{ app.status }}
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="p-12 text-center text-slate-400">
+                            <i class="fa-solid fa-user-clock text-4xl mb-2 block"></i>
+                            <span>No scheduled patient consultations found.</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- =======================================================
+     DIAGNOSE & PRESCRIBE MODAL
+     ======================================================= -->
+<div id="diagnose-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-2xl p-6 shadow-2xl space-y-6 transform scale-95 transition-all">
+        
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <div>
+                <h3 class="text-lg font-bold text-slate-800">Consultation Prescription Editor</h3>
+                <p class="text-xs text-slate-400">Patient: <span class="font-bold text-slate-600" id="patient-name-display"></span></p>
+            </div>
+            <button onclick="closeDiagnoseModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div id="diagnose-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2">
+            <span id="diagnose-alert-msg" class="font-medium"></span>
+        </div>
+
+        <form id="diagnose-form" class="space-y-6">
+            <input type="hidden" id="diagnose-appointment-id" name="appointment_id">
+            
+            <!-- Diagnosis Textarea -->
+            <div class="space-y-1.5">
+                <label for="diagnosis" class="text-xs font-bold text-slate-500 uppercase tracking-wider">Diagnosis Notes & Advice</label>
+                <textarea id="diagnosis" name="diagnosis" required rows="3" placeholder="Enter patient diagnosis, advice, and guidelines..."
+                          class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500/20 text-slate-700"></textarea>
+            </div>
+
+            <!-- Medicine builder section -->
+            <div class="space-y-3">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Build Drug Prescription List</h4>
+                
+                <!-- Builder inputs -->
+                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Medicine</label>
+                        <select id="med-select" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white">
+                            <option value="">Select Drug</option>
+                            {% for med in medicines %}
+                                <option value="{{ med.id }}" data-name="{{ med.name }}" data-stock="{{ med.stock_quantity }}">
+                                    {{ med.name }} (Stock: {{ med.stock_quantity }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Dosage</label>
+                        <input type="text" id="med-dosage" placeholder="e.g. 500mg" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Frequency</label>
+                        <input type="text" id="med-frequency" placeholder="e.g. Twice daily" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Days</label>
+                            <input type="number" id="med-duration" min="1" placeholder="7" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white">
+                        </div>
+                        <button type="button" onclick="addMedicineRow()"
+                                class="bg-teal-600 text-white font-bold rounded-lg text-xs py-2 hover:bg-teal-700 transition-colors flex items-center justify-center">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Added Medicines Table -->
+                <div class="border border-slate-100 rounded-xl overflow-hidden">
+                    <table class="w-full text-left text-xs divide-y divide-slate-50">
+                        <thead class="bg-slate-50 text-slate-400 font-semibold">
+                            <tr>
+                                <th class="px-4 py-2">Medicine Name</th>
+                                <th class="px-4 py-2">Dosage</th>
+                                <th class="px-4 py-2">Frequency</th>
+                                <th class="px-4 py-2">Duration</th>
+                                <th class="px-4 py-2">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="med-table-body" class="divide-y divide-slate-50 text-slate-700 font-medium">
+                            <tr id="empty-table-row">
+                                <td colspan="5" class="px-4 py-6 text-center text-slate-400 italic">No drugs added. Build items above.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex space-x-3 pt-2">
+                <button type="button" onclick="closeDiagnoseModal()" class="w-1/2 border border-slate-200 font-bold py-2.5 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="submit" id="diagnose-submit-btn" class="w-1/2 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold py-2.5 rounded-xl hover:shadow-lg transition-all">Submit Diagnostics & Bill</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let prescribedMeds = []; // Array to store {medicine_id, medicine_name, dosage, frequency, duration_days}
+
+function openDiagnoseModal(appointmentId, patientName) {
+    document.getElementById('diagnose-modal').classList.remove('hidden');
+    document.getElementById('diagnose-alert').className = 'hidden';
+    document.getElementById('diagnose-appointment-id').value = appointmentId;
+    document.getElementById('patient-name-display').innerText = patientName;
+    document.getElementById('diagnose-form').reset();
+    prescribedMeds = [];
+    renderMedTable();
+}
+
+function closeDiagnoseModal() {
+    document.getElementById('diagnose-modal').classList.add('hidden');
+}
+
+// Add medicine row to table list
+function addMedicineRow() {
+    const medSelect = document.getElementById('med-select');
+    const medId = medSelect.value;
+    const dosage = document.getElementById('med-dosage').value.trim();
+    const frequency = document.getElementById('med-frequency').value.trim();
+    const duration = parseInt(document.getElementById('med-duration').value);
+
+    if (!medId || !dosage || !frequency || isNaN(duration) || duration <= 0) {
+        alert("Please specify medicine, dosage, frequency, and valid duration days.");
+        return;
+    }
+
+    const selectedOption = medSelect.options[medSelect.selectedIndex];
+    const medName = selectedOption.getAttribute('data-name');
+    const stock = parseInt(selectedOption.getAttribute('data-stock'));
+
+    if (duration > stock) {
+        alert(`Insufficient stock. Only ${stock} units are currently available.`);
+        return;
+    }
+
+    // Check duplicate
+    if (prescribedMeds.some(m => m.medicine_id === medId)) {
+        alert("Medicine already added to this prescription list.");
+        return;
+    }
+
+    prescribedMeds.push({
+        medicine_id: medId,
+        medicine_name: medName,
+        dosage: dosage,
+        frequency: frequency,
+        duration_days: duration
+    });
+
+    // Reset inputs
+    medSelect.value = '';
+    document.getElementById('med-dosage').value = '';
+    document.getElementById('med-frequency').value = '';
+    document.getElementById('med-duration').value = '';
+
+    renderMedTable();
+}
+
+// Remove medicine row
+function removeMedicineRow(index) {
+    prescribedMeds.splice(index, 1);
+    renderMedTable();
+}
+
+// Render the javascript-built prescribed list to HTML table rows
+function renderMedTable() {
+    const tbody = document.getElementById('med-table-body');
+    tbody.innerHTML = '';
+    
+    if (prescribedMeds.length === 0) {
+        tbody.innerHTML = `
+            <tr id="empty-table-row">
+                <td colspan="5" class="px-4 py-6 text-center text-slate-400 italic">No drugs added. Build items above.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    prescribedMeds.forEach((med, index) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50/50 transition-colors';
+        tr.innerHTML = `
+            <td class="px-4 py-2.5 font-bold">${med.medicine_name}</td>
+            <td class="px-4 py-2.5">${med.dosage}</td>
+            <td class="px-4 py-2.5">${med.frequency}</td>
+            <td class="px-4 py-2.5">${med.duration_days} Days</td>
+            <td class="px-4 py-2.5">
+                <button type="button" onclick="removeMedicineRow(${index})" class="text-rose-600 hover:text-rose-700 text-xs font-bold">Delete</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// Submit diagnosis and items lists via JSON
+document.getElementById('diagnose-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const alertBox = document.getElementById('diagnose-alert');
+    const alertMsg = document.getElementById('diagnose-alert-msg');
+    const submitBtn = document.getElementById('diagnose-submit-btn');
+
+    const appointment_id = document.getElementById('diagnose-appointment-id').value;
+    const diagnosis = document.getElementById('diagnosis').value.trim();
+
+    if (prescribedMeds.length === 0) {
+        alert("Please prescribe at least one medicine item.");
+        return;
+    }
+
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+
+    try {
+        const response = await fetch("{{ url_for('doctor.diagnose_and_prescribe') }}", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                appointment_id: appointment_id,
+                diagnosis: diagnosis,
+                medicines: prescribedMeds
+            })
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-emerald-50 text-emerald-800 border-emerald-100';
+            alertMsg.innerText = result.message;
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Error completing consultation.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Network error submitting diagnosis.';
+        submitBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

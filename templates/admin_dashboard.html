@@ -1,0 +1,468 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - CareGrid{% endblock %}
+
+{% block content %}
+<div class="space-y-8 py-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900 tracking-tight">System Control Center</h1>
+            <p class="text-slate-400 text-sm">Oversight of system statistics, medical personnel, and audit registries</p>
+        </div>
+        <button onclick="openAddDocModal()"
+                class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-lg hover:shadow-emerald-500/20 text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-300 transform hover:-translate-y-0.5 flex items-center space-x-2">
+            <i class="fa-solid fa-user-doctor"></i>
+            <span>Register New Doctor</span>
+        </button>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Patients count -->
+        <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm flex items-center justify-between">
+            <div>
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Registered Patients</span>
+                <span class="text-3xl font-extrabold text-slate-950 block mt-1">{{ stats.patients }}</span>
+            </div>
+            <div class="p-3.5 bg-blue-50 text-blue-600 rounded-2xl">
+                <i class="fa-solid fa-hospital-user text-2xl"></i>
+            </div>
+        </div>
+
+        <!-- Doctors count -->
+        <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm flex items-center justify-between">
+            <div>
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Medical Practitioners</span>
+                <span class="text-3xl font-extrabold text-slate-950 block mt-1">{{ stats.doctors }}</span>
+            </div>
+            <div class="p-3.5 bg-teal-50 text-teal-600 rounded-2xl">
+                <i class="fa-solid fa-user-doctor text-2xl"></i>
+            </div>
+        </div>
+
+        <!-- Appointments count -->
+        <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm flex items-center justify-between">
+            <div>
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Total Appointments</span>
+                <span class="text-3xl font-extrabold text-slate-950 block mt-1">{{ stats.appointments }}</span>
+            </div>
+            <div class="p-3.5 bg-amber-50 text-amber-600 rounded-2xl">
+                <i class="fa-solid fa-clipboard-list text-2xl"></i>
+            </div>
+        </div>
+
+        <!-- Total Revenue -->
+        <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm flex items-center justify-between">
+            <div>
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Total Billed Revenue</span>
+                <span class="text-3xl font-extrabold text-emerald-600 block mt-1">${{ stats.revenue }}</span>
+            </div>
+            <div class="p-3.5 bg-emerald-50 text-emerald-600 rounded-2xl">
+                <i class="fa-solid fa-file-invoice-dollar text-2xl"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toggles / Tabs for Management Sections -->
+    <div class="flex space-x-4 border-b border-slate-100 pb-px">
+        <button onclick="switchTab('doctors-tab', this)" class="tab-btn border-b-2 border-emerald-500 text-emerald-600 font-bold px-4 py-2.5 text-sm transition-all focus:outline-none">
+            Manage Doctor Profiles
+        </button>
+        <button onclick="switchTab('audit-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
+            System Activity Audit Registry
+        </button>
+    </div>
+
+    <!-- TABS CONTENTS -->
+
+    <!-- Tab 1: Doctors Management -->
+    <div id="doctors-tab" class="tab-content block">
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-user-doctor text-emerald-600"></i>
+                    <span>Hospital Medical Staff Registry</span>
+                </h3>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm divide-y divide-slate-50">
+                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Practitioner</th>
+                            <th class="px-6 py-4">Specialization</th>
+                            <th class="px-6 py-4">Qualification</th>
+                            <th class="px-6 py-4">Fee</th>
+                            <th class="px-6 py-4">Available Shift</th>
+                            <th class="px-6 py-4">Status</th>
+                            <th class="px-6 py-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
+                        {% for doc in doctors %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4.5">
+                                    <span class="font-bold text-slate-800 block">{{ doc.name }}</span>
+                                    <span class="text-xs text-slate-400 font-mono">{{ doc.email }}</span>
+                                </td>
+                                <td class="px-6 py-4.5">{{ doc.specialization }}</td>
+                                <td class="px-6 py-4.5">
+                                    <span class="block">{{ doc.qualification }}</span>
+                                    <span class="text-xs text-slate-400 font-normal">Exp: {{ doc.experience_years }} Years</span>
+                                </td>
+                                <td class="px-6 py-4.5">${{ doc.consultation_fee }}</td>
+                                <td class="px-6 py-4.5">
+                                    <span class="block text-teal-600 text-xs">{{ doc.available_days }}</span>
+                                    <span class="text-[10px] text-slate-400">{{ doc.slot_start_time }} to {{ doc.slot_end_time }}</span>
+                                </td>
+                                <td class="px-6 py-4.5">
+                                    {% if doc.is_active %}
+                                        <span class="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-semibold">Active</span>
+                                    {% else %}
+                                        <span class="px-2.5 py-0.5 bg-slate-100 text-slate-500 border border-slate-200 rounded-full text-xs font-semibold">Inactive</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4.5">
+                                    <button onclick="openEditDocModal({{ doc|tojson }})" 
+                                            class="text-xs border border-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-lg hover:bg-slate-50 hover:text-emerald-600 transition-colors">
+                                        Edit Details
+                                    </button>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="px-6 py-8 text-center text-slate-400 italic">No medical practitioners registered.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2: Activity Audit Log -->
+    <div id="audit-tab" class="tab-content hidden">
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-list-check text-emerald-600"></i>
+                    <span>Live Audit Activity Trail</span>
+                </h3>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm divide-y divide-slate-50">
+                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Logged Time</th>
+                            <th class="px-6 py-4">Operator</th>
+                            <th class="px-6 py-4">Action Summary</th>
+                            <th class="px-6 py-4">Target Type</th>
+                            <th class="px-6 py-4">Record Target ID</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 text-slate-600 text-xs font-medium">
+                        {% for log in logs %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4 text-slate-400">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td class="px-6 py-4 font-bold text-slate-800 capitalize">
+                                    {{ log.admin_name }}
+                                    <span class="text-[10px] bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-full ml-1.5 tracking-wider">{{ log.role }}</span>
+                                </td>
+                                <td class="px-6 py-4 text-slate-700">{{ log.action }}</td>
+                                <td class="px-6 py-4 uppercase font-semibold text-[10px] text-teal-600">{{ log.target_type }}</td>
+                                <td class="px-6 py-4 font-mono font-bold text-slate-500">#{{ log.target_id }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-8 text-center text-slate-400 italic">No system audit records logged.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================
+     MODALS SECTION
+     ======================================================= -->
+
+<!-- 1. Add Doctor Modal -->
+<div id="adddoc-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-xl p-6 shadow-2xl space-y-6 transform scale-95 transition-all">
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <h3 class="text-lg font-bold text-slate-800">Register New Doctor</h3>
+            <button onclick="closeAddDocModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div id="adddoc-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2">
+            <span id="adddoc-alert-msg" class="font-medium"></span>
+        </div>
+
+        <form id="adddoc-form" class="space-y-4">
+            <!-- Grid 1 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Doctor Name</label>
+                    <input type="text" name="name" required placeholder="Dr. John Doe" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Login Email</label>
+                    <input type="email" name="email" required placeholder="john.doe@hospital.com" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Contact Mobile</label>
+                    <input type="tel" name="phone" required placeholder="10 Digits" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Set Login Password</label>
+                    <input type="password" name="password" required placeholder="Min 6 characters" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+            </div>
+
+            <!-- Grid 2 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Specialization</label>
+                    <input type="text" name="specialization" required placeholder="e.g. Cardiology" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Qualifications</label>
+                    <input type="text" name="qualification" required placeholder="e.g. MD, DM" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Experience (Years)</label>
+                    <input type="number" name="experience_years" required min="0" placeholder="10" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+            </div>
+
+            <!-- Grid 3 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Consult Fee ($)</label>
+                    <input type="number" name="consultation_fee" required min="1" step="0.01" placeholder="120.00" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Start Time</label>
+                    <input type="time" name="slot_start_time" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">End Time</label>
+                    <input type="time" name="slot_end_time" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Available Days (Comma Separated)</label>
+                <input type="text" name="available_days" required placeholder="Mon,Wed,Fri" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+            </div>
+
+            <div class="flex space-x-3 pt-2">
+                <button type="button" onclick="closeAddDocModal()" class="w-1/2 border border-slate-200 font-bold py-2.5 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="submit" id="adddoc-submit-btn" class="w-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-2.5 rounded-xl hover:shadow-lg transition-all">Register Doctor</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 2. Edit Doctor Modal -->
+<div id="editdoc-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-xl p-6 shadow-2xl space-y-6">
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <div>
+                <h3 class="text-lg font-bold text-slate-800">Edit Doctor Profile</h3>
+                <p class="text-xs text-slate-400" id="edit-doc-name-display"></p>
+            </div>
+            <button onclick="closeEditDocModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div id="editdoc-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2">
+            <span id="editdoc-alert-msg" class="font-medium"></span>
+        </div>
+
+        <form id="editdoc-form" class="space-y-4">
+            <input type="hidden" id="edit-doc-id">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Specialization</label>
+                    <input type="text" id="edit-doc-spec" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Qualifications</label>
+                    <input type="text" id="edit-doc-qual" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Experience (Years)</label>
+                    <input type="number" id="edit-doc-exp" min="0" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Consult Fee ($)</label>
+                    <input type="number" id="edit-doc-fee" min="1" step="0.01" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Start Time</label>
+                    <input type="time" id="edit-doc-start" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">End Time</label>
+                    <input type="time" id="edit-doc-end" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Available Days</label>
+                <input type="text" id="edit-doc-days" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+            </div>
+
+            <div class="flex items-center space-x-2 pt-2">
+                <input type="checkbox" id="edit-doc-active" class="rounded text-emerald-600 focus:ring-emerald-500">
+                <label for="edit-doc-active" class="text-xs font-bold text-slate-600 uppercase">Practitioner Account Active</label>
+            </div>
+
+            <div class="flex space-x-3 pt-2">
+                <button type="button" onclick="closeEditDocModal()" class="w-1/2 border border-slate-200 font-bold py-2.5 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="submit" id="editdoc-submit-btn" class="w-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-2.5 rounded-xl hover:shadow-lg transition-all">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Switch between admin dashboard tabs
+function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
+    document.getElementById(tabId).classList.remove('hidden');
+
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.className = 'tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none';
+    });
+    btn.className = 'tab-btn border-b-2 border-emerald-500 text-emerald-600 font-bold px-4 py-2.5 text-sm transition-all focus:outline-none';
+}
+
+// Add Doc modal open/close
+function openAddDocModal() {
+    document.getElementById('adddoc-modal').classList.remove('hidden');
+    document.getElementById('adddoc-alert').className = 'hidden';
+    document.getElementById('adddoc-form').reset();
+}
+function closeAddDocModal() {
+    document.getElementById('adddoc-modal').classList.add('hidden');
+}
+
+// Edit Doc modal open/close with parameters
+function openEditDocModal(doc) {
+    document.getElementById('editdoc-modal').classList.remove('hidden');
+    document.getElementById('editdoc-alert').className = 'hidden';
+    
+    document.getElementById('edit-doc-name-display').innerText = doc.name;
+    document.getElementById('edit-doc-id').value = doc.doctor_id;
+    document.getElementById('edit-doc-spec').value = doc.specialization;
+    document.getElementById('edit-doc-qual').value = doc.qualification;
+    document.getElementById('edit-doc-exp').value = doc.experience_years;
+    document.getElementById('edit-doc-fee').value = doc.consultation_fee;
+    document.getElementById('edit-doc-start').value = doc.slot_start_time;
+    document.getElementById('edit-doc-end').value = doc.slot_end_time;
+    document.getElementById('edit-doc-days').value = doc.available_days;
+    document.getElementById('edit-doc-active').checked = doc.is_active;
+}
+function closeEditDocModal() {
+    document.getElementById('editdoc-modal').classList.add('hidden');
+}
+
+// Submit Register Doctor Form
+document.getElementById('adddoc-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const alertBox = document.getElementById('adddoc-alert');
+    const alertMsg = document.getElementById('adddoc-alert-msg');
+    const submitBtn = document.getElementById('adddoc-submit-btn');
+
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+
+    const formData = new FormData(e.target);
+
+    try {
+        const response = await fetch("{{ url_for('admin.add_doctor') }}", {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-emerald-50 text-emerald-800 border-emerald-100';
+            alertMsg.innerText = result.message;
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Error registering doctor profile.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Network connection error registering doctor.';
+        submitBtn.disabled = false;
+    }
+});
+
+// Submit Edit Doctor Form
+document.getElementById('editdoc-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const alertBox = document.getElementById('editdoc-alert');
+    const alertMsg = document.getElementById('editdoc-alert-msg');
+    const submitBtn = document.getElementById('editdoc-submit-btn');
+    const doctorId = document.getElementById('edit-doc-id').value;
+
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+
+    const payload = {
+        specialization: document.getElementById('edit-doc-spec').value.trim(),
+        qualification: document.getElementById('edit-doc-qual').value.trim(),
+        experience_years: parseInt(document.getElementById('edit-doc-exp').value),
+        consultation_fee: parseFloat(document.getElementById('edit-doc-fee').value),
+        slot_start_time: document.getElementById('edit-doc-start').value,
+        slot_end_time: document.getElementById('edit-doc-end').value,
+        available_days: document.getElementById('edit-doc-days').value.trim(),
+        is_active: document.getElementById('edit-doc-active').checked
+    };
+
+    try {
+        const response = await fetch(`/admin/doctor/edit/${doctorId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-emerald-50 text-emerald-800 border-emerald-100';
+            alertMsg.innerText = result.message;
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Error updating doctor details.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Network error saving changes.';
+        submitBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

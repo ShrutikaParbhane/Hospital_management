@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Receptionist Dashboard - CareGrid{% endblock %}
+
+{% block content %}
+<div class="space-y-8 py-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Reception Desk</h1>
+            <p class="text-slate-400 text-sm">Register walk-in patients, confirm appointments, and collect payments</p>
+        </div>
+    </div>
+
+    <!-- Toggles / Tabs for Reception Actions -->
+    <div class="flex space-x-4 border-b border-slate-100 pb-px">
+        <button onclick="switchTab('confirmations-tab', this)" class="tab-btn border-b-2 border-emerald-500 text-emerald-600 font-bold px-4 py-2.5 text-sm transition-all focus:outline-none">
+            Pending Confirmations
+        </button>
+        <button onclick="switchTab('walkin-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
+            Register Walk-in Patient
+        </button>
+        <button onclick="switchTab('billing-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
+            Collect Payments & Billings
+        </button>
+    </div>
+
+    <!-- TABS CONTENTS -->
+    
+    <!-- 1. Pending Confirmations Tab -->
+    <div id="confirmations-tab" class="tab-content block space-y-6">
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-clock-rotate-left text-emerald-600"></i>
+                    <span>Awaiting Desk Confirmation</span>
+                </h3>
+                <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-semibold">{{ pending|length }} Pending</span>
+            </div>
+            
+            <div class="divide-y divide-slate-50">
+                {% for app in pending %}
+                    <div class="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-slate-50/50 transition-colors" id="row-pending-{{ app.id }}">
+                        <div class="space-y-1">
+                            <h4 class="font-bold text-slate-800">{{ app.patient_name }}</h4>
+                            <div class="text-xs text-slate-400 flex flex-wrap gap-x-4">
+                                <span><i class="fa-solid fa-user-doctor mr-1"></i>{{ app.doctor_name }} ({{ app.specialization }})</span>
+                                <span><i class="fa-solid fa-calendar mr-1"></i>{{ app.appointment_date }}</span>
+                                <span><i class="fa-solid fa-clock mr-1"></i>{{ app.start_time }} - {{ app.end_time }}</span>
+                            </div>
+                            <p class="text-xs text-slate-400 italic">Reason: "{{ app.reason }}"</p>
+                        </div>
+                        <button onclick="confirmAppointment({{ app.id }})"
+                                class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-lg hover:shadow-emerald-500/20 text-white text-xs font-semibold px-4.5 py-2.5 rounded-xl transition-all self-stretch md:self-auto flex items-center justify-center space-x-1">
+                            <i class="fa-solid fa-circle-check"></i>
+                            <span>Confirm Visit</span>
+                        </button>
+                    </div>
+                {% else %}
+                    <div class="p-12 text-center text-slate-400">
+                        <i class="fa-solid fa-circle-check text-4xl mb-2 block"></i>
+                        <span>No appointments currently awaiting desk confirmation.</span>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Register Walk-in Patient Tab -->
+    <div id="walkin-tab" class="tab-content hidden">
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm p-6 max-w-3xl mx-auto space-y-6">
+            <h3 class="font-bold text-slate-800 text-lg border-b border-slate-50 pb-3 flex items-center space-x-2">
+                <i class="fa-solid fa-user-plus text-emerald-600"></i>
+                <span>Register Walk-in Patient & Schedule Slot</span>
+            </h3>
+
+            <div id="walkin-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2">
+                <span id="walkin-alert-msg" class="font-medium"></span>
+            </div>
+
+            <form id="walkin-form" class="space-y-6">
+                <!-- Part 1: Personal details -->
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">1. Personal & Contact Details</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Patient Full Name</label>
+                            <input type="text" name="name" required placeholder="Full Name" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Email Address</label>
+                            <input type="email" name="email" required placeholder="name@email.com" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Contact Mobile</label>
+                            <input type="tel" name="phone" required placeholder="10 Digits" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Date of Birth</label>
+                            <input type="date" name="dob" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Gender</label>
+                            <select name="gender" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                                <option value="">Select</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Blood Group</label>
+                            <select name="blood_group" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                                <option value="">Select</option>
+                                <option value="A+">A+</option>
+                                <option value="A-">A-</option>
+                                <option value="B+">B+</option>
+                                <option value="B-">B-</option>
+                                <option value="AB+">AB+</option>
+                                <option value="AB-">AB-</option>
+                                <option value="O+">O+</option>
+                                <option value="O-">O-</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Emergency Contact Name/Phone</label>
+                            <input type="tel" name="emergency_contact" required placeholder="Emergency Phone" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Address</label>
+                            <input type="text" name="address" required placeholder="Address" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Part 2: Booking details -->
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">2. Consultation Schedule</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Choose Doctor</label>
+                            <select name="doctor_id" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                                <option value="">Select Doctor</option>
+                                {% for doc in doctors %}
+                                    <option value="{{ doc.doctor_id }}">{{ doc.doctor_name }} ({{ doc.specialization }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Date</label>
+                            <input type="date" name="appointment_date" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Start Time</label>
+                            <input type="time" name="start_time" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">End Time</label>
+                            <input type="time" name="end_time" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Reason for visit</label>
+                        <input type="text" name="reason" required placeholder="Primary symptoms or reasons" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                    </div>
+                </div>
+
+                <button type="submit" id="walkin-submit-btn"
+                        class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-lg hover:shadow-emerald-500/20 text-white font-bold py-3 rounded-xl transition-all duration-300 flex items-center justify-center space-x-2">
+                    <span>Register Walk-in Patient & Confirm Appointment</span>
+                    <i class="fa-solid fa-calendar-check text-sm"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. Collect Payments Tab -->
+    <div id="billing-tab" class="tab-content hidden space-y-6">
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-file-invoice-dollar text-emerald-600"></i>
+                    <span>Consultation Ledger Invoices</span>
+                </h3>
+            </div>
+
+            <!-- Ledger Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm divide-y divide-slate-50">
+                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Billed At</th>
+                            <th class="px-6 py-4">Patient</th>
+                            <th class="px-6 py-4">Doctor</th>
+                            <th class="px-6 py-4">Consultation</th>
+                            <th class="px-6 py-4">Medicines</th>
+                            <th class="px-6 py-4">Total Amount</th>
+                            <th class="px-6 py-4">Status</th>
+                            <th class="px-6 py-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
+                        {% for bill in bills %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4.5 text-xs text-slate-400">{{ bill.billed_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td class="px-6 py-4.5 font-bold">{{ bill.patient_name }}</td>
+                                <td class="px-6 py-4.5">{{ bill.doctor_name }}</td>
+                                <td class="px-6 py-4.5">${{ bill.consultation_fee }}</td>
+                                <td class="px-6 py-4.5 text-teal-600">${{ bill.medicine_charges }}</td>
+                                <td class="px-6 py-4.5 text-slate-900 font-extrabold">${{ bill.total_amount }}</td>
+                                <td class="px-6 py-4.5">
+                                    {% if bill.payment_status == 'paid' %}
+                                        <span class="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-semibold capitalize">
+                                            paid via {{ bill.payment_method }}
+                                        </span>
+                                    {% else %}
+                                        <span class="px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-full text-xs font-semibold">
+                                            pending
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4.5">
+                                    {% if bill.payment_status == 'pending' %}
+                                        <button onclick="recordCashPayment({{ bill.id }})" 
+                                                class="text-xs bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
+                                            Settle cash
+                                        </button>
+                                    {% else %}
+                                        <span class="text-xs text-slate-400 italic">Completed</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="8" class="px-6 py-8 text-center text-slate-400 italic">No ledger records found.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Switch between receptionist navigation tabs
+function switchTab(tabId, btn) {
+    // Hide all contents
+    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
+    // Show selected content
+    document.getElementById(tabId).classList.remove('hidden');
+
+    // Reset button states
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.className = 'tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none';
+    });
+    // Set active button
+    btn.className = 'tab-btn border-b-2 border-emerald-500 text-emerald-600 font-bold px-4 py-2.5 text-sm transition-all focus:outline-none';
+}
+
+// Confirm Pending Booking
+async function confirmAppointment(appointmentId) {
+    if (!confirm("Are you sure you want to confirm this appointment?")) return;
+    try {
+        const response = await fetch(`/receptionist/confirm/${appointmentId}`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            // Remove row from display list
+            const row = document.getElementById(`row-pending-${appointmentId}`);
+            if (row) row.remove();
+        } else {
+            alert(result.message || 'Error confirming appointment.');
+        }
+    } catch (err) {
+        alert('Network connection error.');
+    }
+}
+
+// Record Cash Payment directly from Receptionist Ledger List
+async function recordCashPayment(billId) {
+    if (!confirm("Are you sure you want to mark this bill as paid via cash?")) return;
+    try {
+        const response = await fetch(`/receptionist/bill/pay/${billId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ payment_method: 'cash' })
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            window.location.reload();
+        } else {
+            alert(result.message || 'Error processing cash payment.');
+        }
+    } catch (err) {
+        alert('Network connection error.');
+    }
+}
+
+// Submit Walk-in Registration form
+document.getElementById('walkin-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const alertBox = document.getElementById('walkin-alert');
+    const alertMsg = document.getElementById('walkin-alert-msg');
+    const submitBtn = document.getElementById('walkin-submit-btn');
+
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+
+    const formData = new FormData(e.target);
+
+    try {
+        const response = await fetch("{{ url_for('receptionist.register_walk_in') }}", {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-emerald-50 text-emerald-800 border-emerald-100';
+            alertMsg.innerText = result.message;
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Error registering walk-in patient.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Network error processing walk-in request.';
+        submitBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

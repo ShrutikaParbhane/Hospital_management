@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}CareGrid Hospital Portal{% endblock %}
+
+{% block content %}
+<div class="py-12 space-y-16">
+    <!-- Hero Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div class="space-y-6 text-left">
+            <div class="inline-flex items-center space-x-2 bg-emerald-50 text-emerald-700 px-4 py-1.5 rounded-full text-xs font-semibold border border-emerald-100/50">
+                <span class="flex h-2 w-2 relative">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>All Systems Fully Operational</span>
+            </div>
+            
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
+                Modern Healthcare, <br>
+                <span class="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">Streamlined Bookings.</span>
+            </h1>
+            
+            <p class="text-slate-500 text-lg leading-relaxed max-w-lg">
+                Book slot-based consultations, check doctor availability schedules in real-time, view detailed digital prescriptions, and pay bills online instantly.
+            </p>
+            
+            <div class="flex flex-wrap gap-4 pt-2">
+                <a href="{{ url_for('auth.login_page') }}" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-lg hover:shadow-emerald-500/20 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 transform hover:-translate-y-0.5 flex items-center space-x-2">
+                    <i class="fa-solid fa-calendar-check"></i>
+                    <span>Book Appointment</span>
+                </a>
+                <a href="{{ url_for('auth.register_page') }}" class="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold px-6 py-3 rounded-xl transition-all duration-300 transform hover:-translate-y-0.5 flex items-center space-x-2">
+                    <i class="fa-solid fa-user-plus"></i>
+                    <span>Register Patient</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- Interactive Banner Card -->
+        <div class="relative flex justify-center">
+            <div class="absolute inset-0 bg-gradient-to-tr from-emerald-400/20 to-teal-400/20 rounded-3xl filter blur-3xl opacity-30 transform rotate-6"></div>
+            <div class="relative w-full max-w-md bg-white border border-slate-100 rounded-3xl p-8 shadow-xl shadow-slate-200/50 space-y-6 transform hover:scale-[1.01] transition-transform duration-300">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Portal Features</span>
+                    <i class="fa-solid fa-circle-nodes text-teal-500 text-lg animate-pulse"></i>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="flex items-start space-x-4 p-3 rounded-2xl hover:bg-slate-50/50 transition-colors">
+                        <div class="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                            <i class="fa-solid fa-user-doctor text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-800">4 Access Roles</h3>
+                            <p class="text-sm text-slate-400">Dashboards customized for Patients, Doctors, Receptionists, and Admins.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start space-x-4 p-3 rounded-2xl hover:bg-slate-50/50 transition-colors">
+                        <div class="p-3 bg-teal-50 rounded-xl text-teal-600">
+                            <i class="fa-solid fa-clock-rotate-left text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-800">Overlap Triggers</h3>
+                            <p class="text-sm text-slate-400">Engineered with database triggers enforcing schedule accuracy.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start space-x-4 p-3 rounded-2xl hover:bg-slate-50/50 transition-colors">
+                        <div class="p-3 bg-sky-50 rounded-xl text-sky-600">
+                            <i class="fa-solid fa-receipt text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-800">Automated Billing</h3>
+                            <p class="text-sm text-slate-400">Consultation fees and medicine items compile automatically upon completion.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Roles Access Info -->
+    <div class="space-y-6">
+        <div class="text-center max-w-xl mx-auto space-y-2">
+            <h2 class="text-2xl font-bold tracking-tight text-slate-900">Pre-Configured Demo Accounts</h2>
+            <p class="text-slate-400 text-sm">For testing and validation of the role-based dashboards, use the following credentials:</p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <!-- Patient Card -->
+            <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow text-center space-y-3">
+                <div class="mx-auto w-12 h-12 bg-emerald-50 rounded-xl text-emerald-600 flex items-center justify-center">
+                    <i class="fa-solid fa-hospital-user text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-800">Patient Dashboard</h3>
+                    <p class="text-xs text-emerald-600 font-semibold mb-2">Role: patient</p>
+                    <p class="text-xs text-slate-400">Email: <span class="font-mono text-slate-600 font-medium">alice@gmail.com</span></p>
+                    <p class="text-xs text-slate-400">Password: <span class="font-mono text-slate-600 font-medium">patient123</span></p>
+                </div>
+            </div>
+
+            <!-- Doctor Card -->
+            <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow text-center space-y-3">
+                <div class="mx-auto w-12 h-12 bg-teal-50 rounded-xl text-teal-600 flex items-center justify-center">
+                    <i class="fa-solid fa-user-doctor text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-800">Doctor Dashboard</h3>
+                    <p class="text-xs text-teal-600 font-semibold mb-2">Role: doctor</p>
+                    <p class="text-xs text-slate-400 font-medium text-slate-500">General Practice:</p>
+                    <p class="text-xs text-slate-400">Email: <span class="font-mono text-slate-600 font-medium">sarah.lin@hospital.com</span></p>
+                    <p class="text-xs text-slate-400">Password: <span class="font-mono text-slate-600 font-medium">doctor123</span></p>
+                </div>
+            </div>
+
+            <!-- Receptionist Card -->
+            <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow text-center space-y-3">
+                <div class="mx-auto w-12 h-12 bg-sky-50 rounded-xl text-sky-600 flex items-center justify-center">
+                    <i class="fa-solid fa-cash-register text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-800">Receptionist Dashboard</h3>
+                    <p class="text-xs text-sky-600 font-semibold mb-2">Role: receptionist</p>
+                    <p class="text-xs text-slate-400">Email: <span class="font-mono text-slate-600 font-medium">receptionist@hospital.com</span></p>
+                    <p class="text-xs text-slate-400">Password: <span class="font-mono text-slate-600 font-medium">receptionist123</span></p>
+                </div>
+            </div>
+
+            <!-- Admin Card -->
+            <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow text-center space-y-3">
+                <div class="mx-auto w-12 h-12 bg-slate-100 rounded-xl text-slate-600 flex items-center justify-center">
+                    <i class="fa-solid fa-user-gear text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-800">Admin Dashboard</h3>
+                    <p class="text-xs text-slate-600 font-semibold mb-2">Role: admin</p>
+                    <p class="text-xs text-slate-400">Email: <span class="font-mono text-slate-600 font-medium">admin@hospital.com</span></p>
+                    <p class="text-xs text-slate-400">Password: <span class="font-mono text-slate-600 font-medium">admin123</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,598 @@
+{% extends "base.html" %}
+
+{% block title %}Patient Dashboard - CareGrid{% endblock %}
+
+{% block content %}
+<div class="space-y-8 py-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Patient Portal</h1>
+            <p class="text-slate-400 text-sm">Manage your consultations, prescriptions, and billing</p>
+        </div>
+        <button onclick="openBookingModal()"
+                class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-lg hover:shadow-emerald-500/20 text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-300 transform hover:-translate-y-0.5 flex items-center space-x-2">
+            <i class="fa-solid fa-calendar-plus"></i>
+            <span>Book New Appointment</span>
+        </button>
+    </div>
+
+    <!-- Main Grid Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <!-- Left Column: Patient Profile & Health Card -->
+        <div class="space-y-6 lg:col-span-1">
+            <!-- Profile Info Card -->
+            <div class="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm space-y-4">
+                <div class="flex items-center space-x-4 border-b border-slate-50 pb-4">
+                    <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 text-lg flex items-center justify-center font-bold">
+                        {{ patient.name[0] }}
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-slate-800 text-lg leading-tight">{{ patient.name }}</h2>
+                        <span class="text-xs text-slate-400">Patient ID: PAT-{{ patient.patient_id }}</span>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Email:</span>
+                        <span class="font-medium text-slate-700">{{ patient.email }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Phone:</span>
+                        <span class="font-medium text-slate-700">{{ patient.phone }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">DOB:</span>
+                        <span class="font-medium text-slate-700">{{ patient.dob }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Gender:</span>
+                        <span class="font-medium text-slate-700 capitalize">{{ patient.gender }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Blood Group:</span>
+                        <span class="font-semibold text-rose-600">{{ patient.blood_group }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Emergency:</span>
+                        <span class="font-medium text-slate-700">{{ patient.emergency_contact }}</span>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Residential Address</span>
+                    <p class="text-slate-600 text-sm bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
+                        {{ patient.address }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Appointments, Billing, Prescriptions -->
+        <div class="lg:col-span-2 space-y-8">
+            
+            <!-- 1. Appointments Section -->
+            <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
+                    <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                        <i class="fa-solid fa-clock text-emerald-600"></i>
+                        <span>Consultation History</span>
+                    </h3>
+                    <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-semibold">{{ appointments|length }} Total</span>
+                </div>
+                
+                <div class="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                    {% for app in appointments %}
+                        <div class="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-slate-50/50 transition-colors">
+                            <div class="space-y-1">
+                                <div class="flex items-center space-x-2">
+                                    <h4 class="font-bold text-slate-800">{{ app.doctor_name }}</h4>
+                                    <span class="text-xs text-slate-400">({{ app.specialization }})</span>
+                                </div>
+                                <div class="text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
+                                    <span><i class="fa-solid fa-calendar mr-1"></i>{{ app.appointment_date }}</span>
+                                    <span><i class="fa-solid fa-clock mr-1"></i>{{ app.start_time }} - {{ app.end_time }}</span>
+                                </div>
+                                <p class="text-sm text-slate-400 italic">"{{ app.reason }}"</p>
+                            </div>
+                            <div>
+                                {% if app.status == 'completed' %}
+                                    <span class="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-bold capitalize flex items-center space-x-1">
+                                        <i class="fa-solid fa-circle-check"></i> <span>Completed</span>
+                                    </span>
+                                {% elif app.status == 'confirmed' %}
+                                    <span class="px-3 py-1 bg-sky-50 text-sky-700 border border-sky-100 rounded-full text-xs font-bold capitalize flex items-center space-x-1">
+                                        <i class="fa-solid fa-circle-check"></i> <span>Confirmed</span>
+                                    </span>
+                                {% elif app.status == 'pending' %}
+                                    <span class="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 rounded-full text-xs font-bold capitalize flex items-center space-x-1">
+                                        <i class="fa-solid fa-circle-notch animate-spin"></i> <span>Pending</span>
+                                    </span>
+                                {% elif app.status == 'cancelled' %}
+                                    <span class="px-3 py-1 bg-rose-50 text-rose-700 border border-rose-100 rounded-full text-xs font-bold capitalize flex items-center space-x-1">
+                                        <i class="fa-solid fa-circle-xmark"></i> <span>Cancelled</span>
+                                    </span>
+                                {% else %}
+                                    <span class="px-3 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded-full text-xs font-bold capitalize">
+                                        {{ app.status }}
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="p-8 text-center text-slate-400">
+                            <i class="fa-solid fa-calendar-xmark text-4xl mb-2 block"></i>
+                            <span>No appointments found. Book your first one above!</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 2. Prescriptions Section -->
+            <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-50">
+                    <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                        <i class="fa-solid fa-prescription-bottle-medical text-emerald-600"></i>
+                        <span>Active Prescriptions</span>
+                    </h3>
+                </div>
+                
+                <div class="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                    {% for pr in prescriptions %}
+                        <div class="p-6 flex justify-between items-center hover:bg-slate-50/50 transition-colors">
+                            <div>
+                                <h4 class="font-bold text-slate-800">Prescription from {{ pr.doctor_name }}</h4>
+                                <div class="text-xs text-slate-400 mt-1">
+                                    <span>Date issued: {{ pr.created_at.strftime('%Y-%m-%d') }}</span>
+                                    <span class="mx-2">|</span>
+                                    <span>Diagnosis: {{ pr.diagnosis[:40] }}{% if pr.diagnosis|length > 40 %}...{% endif %}</span>
+                                </div>
+                            </div>
+                            <button onclick="openPrescriptionModal({{ pr.prescription_id }})"
+                                    class="text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-100 px-3.5 py-2 rounded-xl transition-all">
+                                View Details
+                            </button>
+                        </div>
+                    {% else %}
+                        <div class="p-8 text-center text-slate-400">
+                            <i class="fa-solid fa-receipt text-4xl mb-2 block"></i>
+                            <span>No active prescriptions found.</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 3. Billing Section -->
+            <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-50">
+                    <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                        <i class="fa-solid fa-file-invoice-dollar text-emerald-600"></i>
+                        <span>Billing & Invoice Status</span>
+                    </h3>
+                </div>
+                
+                <div class="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                    {% for bill in bills %}
+                        <div class="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-slate-50/50 transition-colors">
+                            <div>
+                                <h4 class="font-bold text-slate-800">Invoice for Appointment on {{ bill.appointment_date }}</h4>
+                                <p class="text-xs text-slate-400 mt-1">
+                                    Consultation: ${{ bill.consultation_fee }} | Medicines: ${{ bill.medicine_charges }}
+                                </p>
+                                <span class="text-lg font-extrabold text-slate-900 block mt-1">${{ bill.total_amount }}</span>
+                            </div>
+                            
+                            <div class="flex items-center space-x-3">
+                                {% if bill.payment_status == 'paid' %}
+                                    <span class="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-bold flex items-center space-x-1">
+                                        <i class="fa-solid fa-circle-check"></i>
+                                        <span>Paid via {{ bill.payment_method|upper }}</span>
+                                    </span>
+                                {% else %}
+                                    <span class="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 rounded-full text-xs font-bold block mb-1">
+                                        Pending
+                                    </span>
+                                    <button onclick="openPaymentModal({{ bill.id }}, '{{ bill.total_amount }}')"
+                                            class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:shadow-md hover:shadow-emerald-500/20 transition-all">
+                                        Pay Now
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="p-8 text-center text-slate-400">
+                            <i class="fa-solid fa-file-invoice text-4xl mb-2 block"></i>
+                            <span>No bills generated yet. Bills are auto-generated when consultations are completed.</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================
+     MODALS SECTION
+     ======================================================= -->
+
+<!-- 1. Appointment Booking Modal -->
+<div id="booking-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-6 transform scale-95 transition-all">
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <h3 class="text-lg font-bold text-slate-800">Book New Appointment</h3>
+            <button onclick="closeBookingModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div id="booking-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2">
+            <span id="booking-alert-msg" class="font-medium"></span>
+        </div>
+
+        <form id="booking-form" class="space-y-4">
+            <!-- Doctor Selection -->
+            <div class="space-y-1">
+                <label for="doctor_id" class="text-xs font-bold text-slate-500 uppercase">Choose Doctor</label>
+                <select id="doctor_id" name="doctor_id" required onchange="updateAvailabilityNote()"
+                        class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-700">
+                    <option value="">Select Doctor</option>
+                    {% for doc in doctors %}
+                        <option value="{{ doc.doctor_id }}" 
+                                data-days="{{ doc.available_days }}" 
+                                data-start="{{ doc.slot_start_time }}" 
+                                data-end="{{ doc.slot_end_time }}"
+                                data-fee="{{ doc.consultation_fee }}">
+                            {{ doc.doctor_name }} ({{ doc.specialization }}) - Fee: ${{ doc.consultation_fee }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <span id="doc-availability-note" class="text-xs text-slate-400 italic block mt-1"></span>
+            </div>
+
+            <!-- Appointment Date -->
+            <div class="space-y-1">
+                <label for="appointment_date" class="text-xs font-bold text-slate-500 uppercase">Appointment Date</label>
+                <input type="date" id="appointment_date" name="appointment_date" required onchange="triggerAvailabilityCheck()"
+                       class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-700">
+            </div>
+
+            <!-- Start & End Time -->
+            <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label for="start_time" class="text-xs font-bold text-slate-500 uppercase">Start Time</label>
+                    <input type="time" id="start_time" name="start_time" required onchange="triggerAvailabilityCheck()"
+                           class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-700">
+                </div>
+                <div class="space-y-1">
+                    <label for="end_time" class="text-xs font-bold text-slate-500 uppercase">End Time</label>
+                    <input type="time" id="end_time" name="end_time" required onchange="triggerAvailabilityCheck()"
+                           class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-700">
+                </div>
+            </div>
+
+            <!-- Status Check Badge -->
+            <div id="availability-check-box" class="hidden p-3 rounded-xl border text-xs flex justify-between items-center transition-all">
+                <span id="availability-check-msg" class="font-semibold">Checking slot...</span>
+                <span id="availability-check-status" class="px-2 py-0.5 rounded text-[10px] uppercase font-bold"></span>
+            </div>
+
+            <!-- Reason -->
+            <div class="space-y-1">
+                <label for="reason" class="text-xs font-bold text-slate-500 uppercase">Reason for Visit</label>
+                <input type="text" id="reason" name="reason" required placeholder="Describe your symptoms briefly"
+                       class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-700">
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex space-x-3 pt-2">
+                <button type="button" onclick="closeBookingModal()" class="w-1/2 border border-slate-200 font-bold py-2.5 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="submit" id="booking-submit-btn" class="w-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-2.5 rounded-xl hover:shadow-lg transition-all">Book Slot</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 2. Prescription Viewer Modal -->
+<div id="prescription-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-6">
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-file-medical text-emerald-600 text-lg"></i>
+                <h3 class="text-lg font-bold text-slate-800">Prescription Invoice Detail</h3>
+            </div>
+            <button onclick="closePrescriptionModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="space-y-4" id="pres-content">
+            <!-- Dynamically populated from JS -->
+        </div>
+
+        <button onclick="closePrescriptionModal()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition-all">Close</button>
+    </div>
+</div>
+
+<!-- 3. Mock Payment Modal -->
+<div id="payment-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-6">
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <h3 class="text-lg font-bold text-slate-800">Invoice Gateway</h3>
+            <button onclick="closePaymentModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div id="payment-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2">
+            <span id="payment-alert-msg" class="font-medium"></span>
+        </div>
+
+        <div class="space-y-2 text-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <span class="text-xs text-slate-400 font-semibold uppercase tracking-wider block">Total Billed Amount</span>
+            <span id="payment-amount-display" class="text-3xl font-extrabold text-slate-900 block"></span>
+        </div>
+
+        <form id="payment-form" class="space-y-4">
+            <input type="hidden" id="payment-bill-id" name="bill_id">
+            
+            <div class="space-y-2">
+                <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Choose Payment Method</label>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <label class="border border-slate-200 rounded-xl p-3 flex items-center justify-center space-x-2 cursor-pointer hover:bg-slate-50 transition-colors focus-within:ring-2 focus-within:ring-emerald-500/20">
+                        <input type="radio" name="payment_method" value="card" checked class="text-emerald-600 focus:ring-emerald-500">
+                        <span class="text-sm font-semibold text-slate-700">Card Payment</span>
+                    </label>
+
+                    <label class="border border-slate-200 rounded-xl p-3 flex items-center justify-center space-x-2 cursor-pointer hover:bg-slate-50 transition-colors focus-within:ring-2 focus-within:ring-emerald-500/20">
+                        <input type="radio" name="payment_method" value="online" class="text-emerald-600 focus:ring-emerald-500">
+                        <span class="text-sm font-semibold text-slate-700">Online UPI</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="flex space-x-3 pt-2">
+                <button type="button" onclick="closePaymentModal()" class="w-1/2 border border-slate-200 font-bold py-2.5 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="submit" id="payment-submit-btn" class="w-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-2.5 rounded-xl hover:shadow-lg transition-all">Submit Payment</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Open and Close Bookings
+function openBookingModal() {
+    document.getElementById('booking-modal').classList.remove('hidden');
+    document.getElementById('booking-alert').className = 'hidden';
+    document.getElementById('availability-check-box').className = 'hidden';
+    document.getElementById('booking-form').reset();
+    document.getElementById('doc-availability-note').innerText = '';
+}
+function closeBookingModal() {
+    document.getElementById('booking-modal').classList.add('hidden');
+}
+
+// Open and Close Payments
+function openPaymentModal(billId, totalAmount) {
+    document.getElementById('payment-modal').classList.remove('hidden');
+    document.getElementById('payment-alert').className = 'hidden';
+    document.getElementById('payment-bill-id').value = billId;
+    document.getElementById('payment-amount-display').innerText = '$' + totalAmount;
+}
+function closePaymentModal() {
+    document.getElementById('payment-modal').classList.add('hidden');
+}
+
+// Update Note based on selected doctor
+function updateAvailabilityNote() {
+    const select = document.getElementById('doctor_id');
+    const option = select.options[select.selectedIndex];
+    const noteSpan = document.getElementById('doc-availability-note');
+    
+    if (select.value === "") {
+        noteSpan.innerText = '';
+        return;
+    }
+    
+    const days = option.getAttribute('data-days');
+    const start = option.getAttribute('data-start');
+    const end = option.getAttribute('data-end');
+    noteSpan.innerText = `Available days: ${days} | Timing: ${start} to ${end}`;
+    
+    triggerAvailabilityCheck();
+}
+
+// Trigger async availability check
+async function triggerAvailabilityCheck() {
+    const doctor_id = document.getElementById('doctor_id').value;
+    const appointment_date = document.getElementById('appointment_date').value;
+    const start_time = document.getElementById('start_time').value;
+    const end_time = document.getElementById('end_time').value;
+    
+    const checkBox = document.getElementById('availability-check-box');
+    const checkMsg = document.getElementById('availability-check-msg');
+    const checkStatus = document.getElementById('availability-check-status');
+    const submitBtn = document.getElementById('booking-submit-btn');
+
+    if (!doctor_id || !appointment_date || !start_time || !end_time) {
+        checkBox.className = 'hidden';
+        submitBtn.disabled = false;
+        return;
+    }
+
+    checkBox.className = 'p-3 rounded-xl border text-xs flex justify-between items-center bg-slate-50 border-slate-200 text-slate-500';
+    checkMsg.innerText = 'Checking availability slot...';
+    checkStatus.className = 'hidden';
+
+    try {
+        const response = await fetch("{{ url_for('patient.check_availability') }}", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ doctor_id, appointment_date, start_time, end_time })
+        });
+        const result = await response.json();
+        
+        checkBox.className = 'p-3 rounded-xl border text-xs flex justify-between items-center transition-all ' + 
+            (result.success ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-rose-50 border-rose-100 text-rose-800');
+        checkMsg.innerText = result.message;
+        
+        checkStatus.className = 'px-2 py-0.5 rounded text-[10px] uppercase font-bold ' + 
+            (result.success ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white');
+        checkStatus.innerText = result.success ? 'Available' : 'Unavailable';
+        
+        submitBtn.disabled = !result.success;
+    } catch (e) {
+        checkBox.className = 'p-3 rounded-xl border text-xs flex justify-between items-center bg-rose-50 border-rose-100 text-rose-800';
+        checkMsg.innerText = 'Error connecting to availability gateway.';
+        checkStatus.className = 'hidden';
+        submitBtn.disabled = false;
+    }
+}
+
+// Submit Booking Form
+document.getElementById('booking-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const alertBox = document.getElementById('booking-alert');
+    const alertMsg = document.getElementById('booking-alert-msg');
+    const submitBtn = document.getElementById('booking-submit-btn');
+    
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+    
+    const formData = new FormData(e.target);
+    
+    try {
+        const response = await fetch("{{ url_for('patient.book_appointment') }}", {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-emerald-50 text-emerald-800 border-emerald-100';
+            alertMsg.innerText = result.message;
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Booking failed.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Error submitting booking request. Please check connections.';
+        submitBtn.disabled = false;
+    }
+});
+
+// Submit Payment Form
+document.getElementById('payment-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const alertBox = document.getElementById('payment-alert');
+    const alertMsg = document.getElementById('payment-alert-msg');
+    const submitBtn = document.getElementById('payment-submit-btn');
+    const billId = document.getElementById('payment-bill-id').value;
+    
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+    
+    const paymentMethodInput = document.querySelector('input[name="payment_method"]:checked').value;
+
+    try {
+        const response = await fetch(`/patient/pay/${billId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ payment_method: paymentMethodInput })
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-emerald-50 text-emerald-800 border-emerald-100';
+            alertMsg.innerText = result.message;
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Payment processing failed.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Error processing payment.';
+        submitBtn.disabled = false;
+    }
+});
+
+// View prescription details asynchronously
+async function openPrescriptionModal(prescriptionId) {
+    const modal = document.getElementById('prescription-modal');
+    const content = document.getElementById('pres-content');
+    modal.classList.remove('hidden');
+    content.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner animate-spin text-2xl text-slate-400"></i><span class="block mt-2 text-sm text-slate-400">Fetching records...</span></div>';
+
+    try {
+        const response = await fetch(`/patient/prescription/${prescriptionId}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            let itemsHtml = '';
+            if (result.items.length === 0) {
+                itemsHtml = '<p class="text-slate-400 italic text-sm">No specific medicines prescribed.</p>';
+            } else {
+                itemsHtml = `
+                    <div class="border border-slate-100 rounded-xl overflow-hidden mt-2">
+                        <table class="w-full text-left text-sm divide-y divide-slate-50">
+                            <thead class="bg-slate-50 text-slate-400 text-xs font-bold uppercase">
+                                <tr>
+                                    <th class="px-4 py-2">Medicine</th>
+                                    <th class="px-4 py-2">Dosage</th>
+                                    <th class="px-4 py-2">Freq</th>
+                                    <th class="px-4 py-2">Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
+                                ${result.items.map(item => `
+                                    <tr>
+                                        <td class="px-4 py-2.5">${item.medicine_name} <span class="text-[10px] text-slate-400 italic font-normal block">${item.category}</span></td>
+                                        <td class="px-4 py-2.5">${item.dosage}</td>
+                                        <td class="px-4 py-2.5">${item.frequency}</td>
+                                        <td class="px-4 py-2.5">${item.duration_days} Days</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = `
+                <div class="space-y-4">
+                    <div class="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm space-y-1.5">
+                        <div class="flex justify-between"><span class="text-slate-400">Prescribing Doctor:</span><span class="font-bold text-slate-800">${result.prescription.doctor_name} (${result.prescription.specialization})</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">Date Issued:</span><span class="font-medium text-slate-700">${result.prescription.created_at.split('T')[0]}</span></div>
+                    </div>
+                    <div class="space-y-1">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Diagnosis & Notes</span>
+                        <div class="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl text-slate-700 text-sm leading-relaxed whitespace-pre-line">
+                            ${result.prescription.diagnosis}
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block">Prescribed Medicines</span>
+                        ${itemsHtml}
+                    </div>
+                </div>
+            `;
+        } else {
+            content.innerHTML = `<p class="text-rose-600 text-sm font-semibold">${result.message || 'Error loading prescription details.'}</p>`;
+        }
+    } catch (e) {
+        content.innerHTML = '<p class="text-rose-600 text-sm font-semibold">Error fetching records from server.</p>';
+    }
+}
+function closePrescriptionModal() {
+    document.getElementById('prescription-modal').classList.add('hidden');
+}
+</script>
+{% endblock %}
