@@ -21,6 +21,8 @@ def run_tests():
     restock_req_id = None
     new_med_req_id = None
     test_adjustment_id = None
+    expired_med_id = None
+    test_expired_adj_id = None
     
     test_patient_id = 1 # Alice Green (PAT-1)
     test_doctor_id = 1  # Dr. Emily Carter (DOC-1)
@@ -274,6 +276,47 @@ def run_tests():
         else:
             print(f"  [FAIL] Failed: Stock not decremented on manual adjustment.")
 
+        # =======================================================
+        # 10. AUTO-REMOVE EXPIRED STOCK EVENT LOGIC
+        # =======================================================
+        print("\n[Test 10] Verifying Expired Stock Auto-Removal Event logic...")
+        # Create an expired medicine temporarily
+        cursor.execute("""
+            INSERT INTO medicines (name, manufacturer, category, unit_price, stock_quantity, reorder_level, expiry_date)
+            VALUES ('Test Expired Pill', 'TestLab', 'Analgesic', 1.00, 50, 5, '2020-01-01')
+        """)
+        expired_med_id = cursor.lastrowid
+        conn.commit()
+        print(f"  [PASS] Inserted temporary expired medicine with stock = 50.")
+        
+        # Run the EVENT statements simulating cursor fire
+        cursor.execute("SELECT id, stock_quantity, expiry_date FROM medicines WHERE id = %s", (expired_med_id,))
+        med_row = cursor.fetchone()
+        
+        cursor.execute("""
+            INSERT INTO stock_adjustments (medicine_id, admin_id, adjustment_type, quantity_removed, reason)
+            VALUES (%s, NULL, 'expired_removal', %s, CONCAT('Auto-removed: expired on ', %s))
+        """, (med_row['id'], med_row['stock_quantity'], med_row['expiry_date']))
+        conn.commit()
+        print("  [PASS] Simulated auto_remove_expired_medicine event execution using cursor-equivalent sequence.")
+
+        # Verify stock was zeroed out via trigger
+        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = %s", (expired_med_id,))
+        p_stock = cursor.fetchone()['stock_quantity']
+        if p_stock == 0:
+            print("  [PASS] Medicine stock successfully zeroed out.")
+        else:
+            print(f"  [FAIL] Failed: Stock is not zero. Found: {p_stock}")
+            
+        # Verify the adjustment log is created with admin_id as NULL
+        cursor.execute("SELECT * FROM stock_adjustments WHERE medicine_id = %s", (expired_med_id,))
+        adj_log = cursor.fetchone()
+        if adj_log and adj_log['admin_id'] is None and adj_log['adjustment_type'] == 'expired_removal':
+            print("  [PASS] Correct system adjustment log created with admin_id = NULL.")
+            test_expired_adj_id = adj_log['id']
+        else:
+            print(f"  [FAIL] Failed: Adjustment log check. Found: {adj_log}")
+
     except Exception as ex:
         print(f"TEST SUITE FAILURE: {ex}")
     finally:
@@ -296,6 +339,10 @@ def run_tests():
                 cursor.execute("DELETE FROM medicine_requests WHERE id = %s", (new_med_req_id,))
             if test_adjustment_id:
                 cursor.execute("DELETE FROM stock_adjustments WHERE id = %s", (test_adjustment_id,))
+            if test_expired_adj_id:
+                cursor.execute("DELETE FROM stock_adjustments WHERE id = %s", (test_expired_adj_id,))
+            if expired_med_id:
+                cursor.execute("DELETE FROM medicines WHERE id = %s", (expired_med_id,))
             # Reset stock quantities
             cursor.execute("UPDATE medicines SET stock_quantity = 5 WHERE id = 1")
             cursor.execute("UPDATE medicines SET stock_quantity = 200 WHERE id = 2")

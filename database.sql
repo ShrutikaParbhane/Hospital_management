@@ -205,13 +205,13 @@ CREATE TABLE IF NOT EXISTS medicine_requests (
 CREATE TABLE IF NOT EXISTS stock_adjustments (
     id INT PRIMARY KEY AUTO_INCREMENT,
     medicine_id INT NOT NULL,
-    admin_id INT NOT NULL,
+    admin_id INT NULL,
     adjustment_type ENUM('expired_removal', 'damaged', 'correction') NOT NULL,
     quantity_removed INT NOT NULL,
     reason VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (medicine_id) REFERENCES medicines(id) ON DELETE CASCADE,
-    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- =======================================================
@@ -494,6 +494,44 @@ DO
           appointment_date < CURDATE()
           OR (appointment_date = CURDATE() AND start_time < CURTIME())
       );
+
+-- =======================================================
+-- EVENT: Auto-remove expired stock once daily
+-- =======================================================
+DELIMITER $$
+CREATE EVENT IF NOT EXISTS auto_remove_expired_medicine
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_DATE + INTERVAL 1 DAY
+DO
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE v_med_id INT;
+    DECLARE v_stock INT;
+    DECLARE v_exp_date DATE;
+    
+    DECLARE cur1 CURSOR FOR 
+        SELECT id, stock_quantity, expiry_date 
+        FROM medicines 
+        WHERE expiry_date < CURDATE() AND stock_quantity > 0;
+        
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    OPEN cur1;
+    
+    read_loop: LOOP
+        FETCH cur1 INTO v_med_id, v_stock, v_exp_date;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+        
+        -- Insert manual adjustment which triggers stock decrement to 0
+        INSERT INTO stock_adjustments (medicine_id, admin_id, adjustment_type, quantity_removed, reason)
+        VALUES (v_med_id, NULL, 'expired_removal', v_stock, CONCAT('Auto-removed: expired on ', v_exp_date));
+    END LOOP;
+    
+    CLOSE cur1;
+END$$
+DELIMITER ;
 
 -- =======================================================
 -- SEED DATA (Password hashes generated via Werkzeug security)
