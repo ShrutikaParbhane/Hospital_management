@@ -169,18 +169,22 @@
                 <div>
                     <h3 class="font-bold text-slate-800 flex items-center space-x-2 text-base">
                         <i class="fa-solid fa-file-invoice-dollar text-emerald-600"></i>
-                        <span>Doctor Consultation Invoices</span>
+                        <span>Billing Invoices Ledger</span>
                     </h3>
-                    <p class="text-xs text-slate-400">Bills generated automatically upon appointment completion.</p>
+                    <p class="text-xs text-slate-400">Bills containing doctor consultation fees and pharmacy medication charges.</p>
                 </div>
                 
-                <div class="divide-y divide-slate-50 max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
-                    {% for bill in consultation_bills %}
+                <div class="divide-y divide-slate-50 max-h-120 overflow-y-auto border border-slate-100 rounded-xl">
+                    {% for bill in bills %}
                         <div class="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-slate-50/50 transition-colors">
-                            <div>
-                                <h4 class="font-bold text-slate-800 text-xs">Consultation with {{ bill.doctor_name }}</h4>
+                            <div class="space-y-1">
+                                <h4 class="font-bold text-slate-800 text-xs">Invoice for Consultation with {{ bill.doctor_name }}</h4>
                                 <span class="text-[10px] text-slate-400 block">{{ bill.appointment_date }}</span>
-                                <span class="text-base font-extrabold text-slate-900 block mt-0.5">${{ bill.consultation_fee }}</span>
+                                <div class="text-xs text-slate-500 flex space-x-4 mt-1 font-medium">
+                                    <span>Doctor Consultation Fee: <strong class="text-slate-700">${{ bill.consultation_fee }}</strong></span>
+                                    <span>Pharmacy Medication: <strong class="text-slate-700">${{ bill.medicine_charges }}</strong></span>
+                                </div>
+                                <span class="text-sm font-extrabold text-slate-900 block mt-1">Total Billed: ${{ bill.total_amount }}</span>
                             </div>
                             
                             <div class="flex items-center space-x-3">
@@ -193,57 +197,16 @@
                                     <span class="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 rounded-full text-[10px] font-bold block mb-1">
                                         Pending
                                     </span>
-                                    <button onclick="openPaymentModal({{ bill.id }}, '{{ bill.consultation_fee }}', 'consultation')"
+                                    <button onclick="openPaymentModal({{ bill.id }}, '{{ bill.total_amount }}')"
                                             class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl hover:shadow-md hover:shadow-emerald-500/20 transition-all">
-                                        Settle Fee
+                                        Pay Invoice
                                     </button>
                                 {% endif %}
                             </div>
                         </div>
                     {% else %}
                         <div class="p-6 text-center text-slate-400 text-xs italic">
-                            No consultation invoices found.
-                        </div>
-                    {% endfor %}
-                </div>
-
-                <div class="pt-4 border-t border-slate-100">
-                    <h3 class="font-bold text-slate-800 flex items-center space-x-2 text-base">
-                        <i class="fa-solid fa-prescription-bottle-medical text-emerald-600"></i>
-                        <span>Pharmacy Medication Bills</span>
-                    </h3>
-                    <p class="text-xs text-slate-400">Bills generated when you buy prescribed medicines from the hospital pharmacy.</p>
-                </div>
-                
-                <div class="divide-y divide-slate-50 max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
-                    {% for bill in pharmacy_bills %}
-                        <div class="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-slate-50/50 transition-colors">
-                            <div>
-                                <h4 class="font-bold text-slate-800 text-xs">Prescription Medicines Invoice</h4>
-                                <span class="text-[10px] text-slate-400 block">Prescribed by {{ bill.doctor_name }} on {{ bill.appointment_date }}</span>
-                                <span class="text-base font-extrabold text-slate-900 block mt-0.5">${{ bill.total_amount }}</span>
-                            </div>
-                            
-                            <div class="flex items-center space-x-3">
-                                {% if bill.payment_status == 'paid' %}
-                                    <span class="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-[10px] font-bold flex items-center space-x-1">
-                                        <i class="fa-solid fa-circle-check"></i>
-                                        <span>Paid via {{ bill.payment_method|upper }}</span>
-                                    </span>
-                                {% else %}
-                                    <span class="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 rounded-full text-[10px] font-bold block mb-1">
-                                        Pending
-                                    </span>
-                                    <button onclick="openPaymentModal({{ bill.id }}, '{{ bill.total_amount }}', 'pharmacy')"
-                                            class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl hover:shadow-md hover:shadow-emerald-500/20 transition-all">
-                                        Pay Pharmacy Bill
-                                    </button>
-                                {% endif %}
-                            </div>
-                        </div>
-                    {% else %}
-                        <div class="p-6 text-center text-slate-400 text-xs italic">
-                            No pharmacy bills generated.
+                            No billing invoices found.
                         </div>
                     {% endfor %}
                 </div>
@@ -370,7 +333,6 @@
 
         <form id="payment-form" class="space-y-4">
             <input type="hidden" id="payment-bill-id" name="bill_id">
-            <input type="hidden" id="payment-bill-type" name="bill_type">
             
             <div class="space-y-2">
                 <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Choose Payment Method</label>
@@ -412,11 +374,10 @@ function closeBookingModal() {
 }
 
 // Open and Close Payments
-function openPaymentModal(billId, totalAmount, billType) {
+function openPaymentModal(billId, totalAmount) {
     document.getElementById('payment-modal').classList.remove('hidden');
     document.getElementById('payment-alert').className = 'hidden';
     document.getElementById('payment-bill-id').value = billId;
-    document.getElementById('payment-bill-type').value = billType;
     document.getElementById('payment-amount-display').innerText = '$' + totalAmount;
 }
 function closePaymentModal() {
@@ -533,7 +494,6 @@ document.getElementById('payment-form').addEventListener('submit', async functio
     const alertMsg = document.getElementById('payment-alert-msg');
     const submitBtn = document.getElementById('payment-submit-btn');
     const billId = document.getElementById('payment-bill-id').value;
-    const billType = document.getElementById('payment-bill-type').value;
     
     alertBox.className = 'hidden';
     submitBtn.disabled = true;
@@ -541,7 +501,7 @@ document.getElementById('payment-form').addEventListener('submit', async functio
     const paymentMethodInput = document.querySelector('input[name="payment_method"]:checked').value;
 
     try {
-        const response = await fetch(`/patient/pay/${billType}/${billId}`, {
+        const response = await fetch(`/patient/pay/${billId}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ payment_method: paymentMethodInput })

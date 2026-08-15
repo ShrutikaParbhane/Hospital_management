@@ -28,11 +28,7 @@ def dashboard():
         cursor.execute("SELECT COUNT(*) as count FROM appointments")
         appointments_count = cursor.fetchone()['count']
 
-        cursor.execute("""
-            SELECT 
-                (SELECT IFNULL(SUM(consultation_fee), 0.00) FROM consultation_bills WHERE payment_status = 'paid') + 
-                (SELECT IFNULL(SUM(total_amount), 0.00) FROM pharmacy_bills WHERE payment_status = 'paid') as sum
-        """)
+        cursor.execute("SELECT IFNULL(SUM(total_amount), 0.00) as sum FROM billing WHERE payment_status = 'paid'")
         total_revenue = cursor.fetchone()['sum']
 
         # 2. Fetch doctor lists

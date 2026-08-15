@@ -4,7 +4,7 @@ from werkzeug.security import check_password_hash
 
 def run_tests():
     print("=" * 60)
-    print(" RUNNING DECOUPLED & SAFETY VERIFICATION SUITE")
+    print(" RUNNING UNIFIED SINGLE-BILL VERIFICATION SUITE")
     print("=" * 60)
 
     conn = get_db_connection()
@@ -16,8 +16,8 @@ def run_tests():
     test_appointment_id = None
     test_prescription_id = None
     test_prescription_item_id = None
-    test_pharmacy_bill_id = None
-    test_pharmacy_item_id = None
+    test_billing_id = None
+    test_billing_item_id = None
     restock_req_id = None
     new_med_req_id = None
     test_adjustment_id = None
@@ -92,23 +92,24 @@ def run_tests():
 
 
         # =======================================================
-        # 4. DECOUPLED AUTO-BILLING: CONSULTATION BILL ON COMPLETION
+        # 4. UNIFIED AUTO-BILLING: BILL CREATION ON COMPLETION
         # =======================================================
-        print("\n[Test 4] Verifying Consultation Bill Creation on Completion...")
-        cursor.execute("SELECT * FROM consultation_bills WHERE appointment_id = %s", (test_appointment_id,))
+        print("\n[Test 4] Verifying Billing Record Creation on Completion...")
+        cursor.execute("SELECT * FROM billing WHERE appointment_id = %s", (test_appointment_id,))
         if cursor.fetchone():
-            print("  [FAIL] Consultation bill exists before completion.")
+            print("  [FAIL] Billing record exists before completion.")
             
         cursor.execute("UPDATE appointments SET status = 'completed' WHERE id = %s", (test_appointment_id,))
         conn.commit()
         print("  [PASS] Updated appointment status to 'completed'.")
 
-        cursor.execute("SELECT * FROM consultation_bills WHERE appointment_id = %s", (test_appointment_id,))
-        cb = cursor.fetchone()
-        if cb and float(cb['consultation_fee']) == 150.00 and cb['payment_status'] == 'pending':
-            print(f"  [PASS] consultation_bills row created automatically. fee = ${cb['consultation_fee']}, status = {cb['payment_status']}.")
+        cursor.execute("SELECT * FROM billing WHERE appointment_id = %s", (test_appointment_id,))
+        b = cursor.fetchone()
+        if b and float(b['consultation_fee']) == 150.00 and float(b['medicine_charges']) == 0.00 and b['payment_status'] == 'pending':
+            print(f"  [PASS] billing row created automatically. fee = ${b['consultation_fee']}, medicines = ${b['medicine_charges']}, status = {b['payment_status']}.")
+            test_billing_id = b['id']
         else:
-            print("  [FAIL] Consultation bill row was not created correctly.")
+            print("  [FAIL] Billing row was not created correctly.")
 
 
         # =======================================================
@@ -138,7 +139,7 @@ def run_tests():
 
 
         # =======================================================
-        # 6. PHARMACY DECOUPLED BILLING & STOCK CONTROL TRIGGERS
+        # 6. UNIFIED PHARMACY BILLING & STOCK CONTROL TRIGGERS
         # =======================================================
         print("\n[Test 6] Verifying Pharmacy Dispensing & Stock Controls...")
         # Get current stock of Amoxicillin (ID: 1)
@@ -161,20 +162,12 @@ def run_tests():
         else:
             print("  [FAIL] Stock was modified on prescription write.")
 
-        # Create pharmacy bill
-        cursor.execute("""
-            INSERT INTO pharmacy_bills (prescription_id, patient_id, total_amount, payment_status)
-            VALUES (%s, %s, 0.00, 'pending')
-        """, (test_prescription_id, test_patient_id))
-        test_pharmacy_bill_id = cursor.lastrowid
-        conn.commit()
-
         # Test 6a: Try dispensing quantity exceeding stock
         try:
             cursor.execute("""
-                INSERT INTO pharmacy_bill_items (pharmacy_bill_id, prescription_item_id, quantity, unit_price)
+                INSERT INTO billing_items (billing_id, prescription_item_id, quantity, unit_price)
                 VALUES (%s, %s, 999, 1.50)
-            """, (test_pharmacy_bill_id, test_prescription_item_id))
+            """, (test_billing_id, test_prescription_item_id))
             conn.commit()
             print("  [FAIL] Insufficient stock check did not block dispensing.")
         except mysql.connector.Error as e:
@@ -185,10 +178,10 @@ def run_tests():
 
         # Test 6b: Dispense valid item
         cursor.execute("""
-            INSERT INTO pharmacy_bill_items (pharmacy_bill_id, prescription_item_id, quantity, unit_price)
+            INSERT INTO billing_items (billing_id, prescription_item_id, quantity, unit_price)
             VALUES (%s, %s, 3, %s)
-        """, (test_pharmacy_bill_id, test_prescription_item_id, med_init['unit_price']))
-        test_pharmacy_item_id = cursor.lastrowid
+        """, (test_billing_id, test_prescription_item_id, med_init['unit_price']))
+        test_billing_item_id = cursor.lastrowid
         conn.commit()
         print("  [PASS] Dispensed 3 units of Amoxicillin successfully.")
 
@@ -200,14 +193,15 @@ def run_tests():
         else:
             print(f"  [FAIL] Stock not decremented. Expected: {med_init['stock_quantity'] - 3}, Found: {med_final['stock_quantity']}")
 
-        # Verify pharmacy bill total updated
-        cursor.execute("SELECT total_amount FROM pharmacy_bills WHERE id = %s", (test_pharmacy_bill_id,))
-        updated_pb = cursor.fetchone()
-        expected_total = float(med_init['unit_price']) * 3 # 1.50 * 3 = 4.50
-        if updated_pb and float(updated_pb['total_amount']) == expected_total:
-            print(f"  [PASS] Pharmacy bill total recalculated. total = ${updated_pb['total_amount']}.")
+        # Verify unified bill updated
+        cursor.execute("SELECT medicine_charges, total_amount FROM billing WHERE id = %s", (test_billing_id,))
+        updated_b = cursor.fetchone()
+        expected_med = float(med_init['unit_price']) * 3 # 1.50 * 3 = 4.50
+        expected_total = 150.00 + expected_med
+        if updated_b and float(updated_b['medicine_charges']) == expected_med and float(updated_b['total_amount']) == expected_total:
+            print(f"  [PASS] Unified bill charges recalculated. medicine_charges = ${updated_b['medicine_charges']}, total_amount = ${updated_b['total_amount']}.")
         else:
-            print(f"  [FAIL] Total amount not updated correctly. Expected: {expected_total}, Found: {updated_pb}")
+            print(f"  [FAIL] Total amount not updated correctly. Expected: med={expected_med}, tot={expected_total}, Found: {updated_b}")
 
 
         # =======================================================
@@ -322,16 +316,16 @@ def run_tests():
     finally:
         print("\nCleaning up test mutations...")
         try:
-            if test_pharmacy_item_id:
-                cursor.execute("DELETE FROM pharmacy_bill_items WHERE id = %s", (test_pharmacy_item_id,))
-            if test_pharmacy_bill_id:
-                cursor.execute("DELETE FROM pharmacy_bills WHERE id = %s", (test_pharmacy_bill_id,))
+            if test_billing_item_id:
+                cursor.execute("DELETE FROM billing_items WHERE id = %s", (test_billing_item_id,))
+            if test_billing_id:
+                cursor.execute("DELETE FROM billing WHERE id = %s", (test_billing_id,))
             if test_prescription_item_id:
                 cursor.execute("DELETE FROM prescription_items WHERE id = %s", (test_prescription_item_id,))
             if test_prescription_id:
                 cursor.execute("DELETE FROM prescriptions WHERE id = %s", (test_prescription_id,))
             if test_appointment_id:
-                cursor.execute("DELETE FROM consultation_bills WHERE appointment_id = %s", (test_appointment_id,))
+                cursor.execute("DELETE FROM billing WHERE appointment_id = %s", (test_appointment_id,))
                 cursor.execute("DELETE FROM appointments WHERE id = %s", (test_appointment_id,))
             if restock_req_id:
                 cursor.execute("DELETE FROM medicine_requests WHERE id = %s", (restock_req_id,))

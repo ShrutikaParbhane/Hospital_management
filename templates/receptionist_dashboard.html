@@ -245,13 +245,12 @@
     </div>
 
     <!-- 4. Collect Payments Tab -->
-    <div id="billing-tab" class="tab-content hidden space-y-8">
-        <!-- Consultation Bills -->
+    <div id="billing-tab" class="tab-content hidden space-y-6">
         <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
             <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
                 <h3 class="font-bold text-slate-800 flex items-center space-x-2">
                     <i class="fa-solid fa-file-invoice-dollar text-emerald-600"></i>
-                    <span>Doctor Consultation Bills</span>
+                    <span>Patient Billing Ledger Invoices</span>
                 </h3>
             </div>
 
@@ -262,18 +261,22 @@
                             <th class="px-6 py-4">Billed At</th>
                             <th class="px-6 py-4">Patient Name</th>
                             <th class="px-6 py-4">Doctor Consultation</th>
-                            <th class="px-6 py-4">Fee Amount</th>
+                            <th class="px-6 py-4">Consultation Fee</th>
+                            <th class="px-6 py-4">Pharmacy Charges</th>
+                            <th class="px-6 py-4">Total Amount</th>
                             <th class="px-6 py-4">Payment Status</th>
                             <th class="px-6 py-4">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
-                        {% for bill in consultation_bills %}
+                        {% for bill in bills %}
                             <tr class="hover:bg-slate-50/50 transition-colors">
                                 <td class="px-6 py-4.5 text-xs text-slate-400">{{ bill.billed_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                                <td class="px-6 py-4.5 font-bold">{{ bill.patient_name }}</td>
+                                <td class="px-6 py-4.5 font-bold text-slate-800">{{ bill.patient_name }}</td>
                                 <td class="px-6 py-4.5">Consultation with {{ bill.doctor_name }}</td>
-                                <td class="px-6 py-4.5 text-slate-900 font-extrabold">${{ bill.consultation_fee }}</td>
+                                <td class="px-6 py-4.5 font-mono">${{ bill.consultation_fee }}</td>
+                                <td class="px-6 py-4.5 font-mono text-teal-600">${{ bill.medicine_charges }}</td>
+                                <td class="px-6 py-4.5 text-slate-900 font-extrabold font-mono">${{ bill.total_amount }}</td>
                                 <td class="px-6 py-4.5">
                                     {% if bill.payment_status == 'paid' %}
                                         <span class="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-semibold capitalize">
@@ -287,8 +290,8 @@
                                 </td>
                                 <td class="px-6 py-4.5">
                                     {% if bill.payment_status == 'pending' %}
-                                        <button onclick="recordCashPayment({{ bill.id }}, 'consultation')" 
-                                                class="text-xs bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
+                                        <button onclick="recordCashPayment({{ bill.id }})" 
+                                                class="text-xs bg-emerald-600 text-white font-bold px-3.5 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
                                             Settle cash
                                         </button>
                                     {% else %}
@@ -298,67 +301,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="6" class="px-6 py-8 text-center text-slate-400 italic">No consultation records found.</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Pharmacy Bills -->
-        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
-                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
-                    <i class="fa-solid fa-prescription-bottle-medical text-emerald-600"></i>
-                    <span>Pharmacy Medication Bills</span>
-                </h3>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm divide-y divide-slate-50">
-                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
-                        <tr>
-                            <th class="px-6 py-4">Billed At</th>
-                            <th class="px-6 py-4">Patient Name</th>
-                            <th class="px-6 py-4">Prescribing Doctor</th>
-                            <th class="px-6 py-4">Pharmacy Total</th>
-                            <th class="px-6 py-4">Payment Status</th>
-                            <th class="px-6 py-4">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
-                        {% for bill in pharmacy_bills %}
-                            <tr class="hover:bg-slate-50/50 transition-colors">
-                                <td class="px-6 py-4.5 text-xs text-slate-400">{{ bill.billed_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                                <td class="px-6 py-4.5 font-bold">{{ bill.patient_name }}</td>
-                                <td class="px-6 py-4.5">Prescribed by {{ bill.doctor_name }}</td>
-                                <td class="px-6 py-4.5 text-slate-900 font-extrabold">${{ bill.total_amount }}</td>
-                                <td class="px-6 py-4.5">
-                                    {% if bill.payment_status == 'paid' %}
-                                        <span class="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-semibold capitalize">
-                                            paid via {{ bill.payment_method }}
-                                        </span>
-                                    {% else %}
-                                        <span class="px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-full text-xs font-semibold">
-                                            pending
-                                        </span>
-                                    {% endif %}
-                                </td>
-                                <td class="px-6 py-4.5">
-                                    {% if bill.payment_status == 'pending' %}
-                                        <button onclick="recordCashPayment({{ bill.id }}, 'pharmacy')" 
-                                                class="text-xs bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
-                                            Settle cash
-                                        </button>
-                                    {% else %}
-                                        <span class="text-xs text-slate-400 italic">Completed</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        {% else %}
-                            <tr>
-                                <td colspan="6" class="px-6 py-8 text-center text-slate-400 italic">No pharmacy bills generated.</td>
+                                <td colspan="8" class="px-6 py-8 text-center text-slate-400 italic">No ledger records found.</td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -451,10 +394,10 @@ async function confirmAppointment(appointmentId) {
 }
 
 // Record Cash Payment directly from Receptionist Ledger List
-async function recordCashPayment(billId, billType) {
-    if (!confirm(`Are you sure you want to mark this ${billType} bill as paid via cash?`)) return;
+async function recordCashPayment(billId) {
+    if (!confirm("Are you sure you want to mark this bill as paid via cash?")) return;
     try {
-        const response = await fetch(`/receptionist/bill/pay/${billType}/${billId}`, {
+        const response = await fetch(`/receptionist/bill/pay/${billId}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ payment_method: 'cash' })

@@ -39,32 +39,19 @@ def dashboard():
         """, (patient_id,))
         appointments = cursor.fetchall()
         
-        # 3a. Fetch Consultation Bills
+        # 3. Fetch Unified Bills
         cursor.execute("""
-            SELECT cb.id, cb.appointment_id, cb.consultation_fee, cb.payment_status, cb.payment_method, cb.billed_at,
+            SELECT b.id, b.appointment_id, b.consultation_fee, b.medicine_charges, b.total_amount,
+                   b.payment_status, b.payment_method, b.billed_at,
                    u.name as doctor_name, a.appointment_date
-            FROM consultation_bills cb
-            JOIN appointments a ON cb.appointment_id = a.id
+            FROM billing b
+            JOIN appointments a ON b.appointment_id = a.id
             JOIN doctors d ON a.doctor_id = d.id
             JOIN users u ON d.user_id = u.id
-            WHERE cb.patient_id = %s
-            ORDER BY cb.billed_at DESC
+            WHERE b.patient_id = %s
+            ORDER BY b.billed_at DESC
         """, (patient_id,))
-        consultation_bills = cursor.fetchall()
-
-        # 3b. Fetch Pharmacy Bills
-        cursor.execute("""
-            SELECT pb.id, pb.prescription_id, pb.total_amount, pb.payment_status, pb.payment_method, pb.billed_at,
-                   u.name as doctor_name, a.appointment_date
-            FROM pharmacy_bills pb
-            JOIN prescriptions pr ON pb.prescription_id = pr.id
-            JOIN appointments a ON pr.appointment_id = a.id
-            JOIN doctors d ON a.doctor_id = d.id
-            JOIN users u ON d.user_id = u.id
-            WHERE pb.patient_id = %s
-            ORDER BY pb.billed_at DESC
-        """, (patient_id,))
-        pharmacy_bills = cursor.fetchall()
+        bills = cursor.fetchall()
 
         # 4. Fetch Prescriptions
         cursor.execute("""
@@ -104,8 +91,7 @@ def dashboard():
             'patient_dashboard.html', 
             patient=patient_info, 
             appointments=appointments, 
-            consultation_bills=consultation_bills, 
-            pharmacy_bills=pharmacy_bills,
+            bills=bills, 
             prescriptions=prescriptions,
             doctors=doctors
         )
@@ -285,19 +271,16 @@ def view_prescription(prescription_id):
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
 
-@patient_bp.route('/pay/<string:bill_type>/<int:bill_id>', methods=['POST'])
+@patient_bp.route('/pay/<int:bill_id>', methods=['POST'])
 @login_required(roles=['patient'])
-def pay_bill(bill_type, bill_id):
-    """Mock billing payment portal update for consultation or pharmacy bills"""
+def pay_bill(bill_id):
+    """Mock billing payment portal update for unified single bill"""
     patient_id = session.get('patient_id')
     data = request.get_json() or {}
     payment_method = data.get('payment_method', 'card')
 
     if payment_method not in ['cash', 'card', 'online']:
         return jsonify({'success': False, 'message': 'Invalid payment method.'}), 400
-
-    if bill_type not in ['consultation', 'pharmacy']:
-        return jsonify({'success': False, 'message': 'Invalid bill type.'}), 400
 
     conn = get_db_connection()
     if not conn:
@@ -306,32 +289,18 @@ def pay_bill(bill_type, bill_id):
     try:
         cursor = conn.cursor(dictionary=True)
         
-        if bill_type == 'consultation':
-            cursor.execute("SELECT id, consultation_fee as amount FROM consultation_bills WHERE id = %s AND patient_id = %s", (bill_id, patient_id))
-            bill = cursor.fetchone()
-            if not bill:
-                cursor.close()
-                conn.close()
-                return jsonify({'success': False, 'message': 'Consultation bill not found or unauthorized.'}), 404
-            
-            cursor.execute("""
-                UPDATE consultation_bills
-                SET payment_status = 'paid', payment_method = %s
-                WHERE id = %s
-            """, (payment_method, bill_id))
-        else:
-            cursor.execute("SELECT id, total_amount as amount FROM pharmacy_bills WHERE id = %s AND patient_id = %s", (bill_id, patient_id))
-            bill = cursor.fetchone()
-            if not bill:
-                cursor.close()
-                conn.close()
-                return jsonify({'success': False, 'message': 'Pharmacy bill not found or unauthorized.'}), 404
-            
-            cursor.execute("""
-                UPDATE pharmacy_bills
-                SET payment_status = 'paid', payment_method = %s
-                WHERE id = %s
-            """, (payment_method, bill_id))
+        cursor.execute("SELECT id, total_amount as amount FROM billing WHERE id = %s AND patient_id = %s", (bill_id, patient_id))
+        bill = cursor.fetchone()
+        if not bill:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Bill not found or unauthorized.'}), 404
+        
+        cursor.execute("""
+            UPDATE billing
+            SET payment_status = 'paid', payment_method = %s
+            WHERE id = %s
+        """, (payment_method, bill_id))
         
         conn.commit()
         cursor.close()

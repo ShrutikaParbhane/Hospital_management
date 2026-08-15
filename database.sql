@@ -132,13 +132,16 @@ CREATE TABLE IF NOT EXISTS prescription_items (
 );
 
 -- =======================================================
--- 9. CONSULTATION BILLING TABLE
 -- =======================================================
-CREATE TABLE IF NOT EXISTS consultation_bills (
+-- 9. BILLING TABLE
+-- =======================================================
+CREATE TABLE IF NOT EXISTS billing (
     id INT PRIMARY KEY AUTO_INCREMENT,
     appointment_id INT UNIQUE NOT NULL,
     patient_id INT NOT NULL,
-    consultation_fee DECIMAL(10,2) NOT NULL,
+    consultation_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    medicine_charges DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    total_amount DECIMAL(10,2) GENERATED ALWAYS AS (consultation_fee + medicine_charges) STORED,
     payment_status ENUM('pending', 'paid', 'failed') DEFAULT 'pending',
     payment_method ENUM('cash', 'card', 'online') NULL,
     billed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -148,32 +151,16 @@ CREATE TABLE IF NOT EXISTS consultation_bills (
 );
 
 -- =======================================================
--- 10. PHARMACY BILLING TABLE
+-- 10. BILLING ITEMS TABLE
 -- =======================================================
-CREATE TABLE IF NOT EXISTS pharmacy_bills (
+CREATE TABLE IF NOT EXISTS billing_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    prescription_id INT UNIQUE NOT NULL,
-    patient_id INT NOT NULL,
-    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    payment_status ENUM('pending', 'paid', 'failed') DEFAULT 'pending',
-    payment_method ENUM('cash', 'card', 'online') NULL,
-    billed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE,
-    FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
-);
-
--- =======================================================
--- 11. PHARMACY BILL ITEMS TABLE
--- =======================================================
-CREATE TABLE IF NOT EXISTS pharmacy_bill_items (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    pharmacy_bill_id INT NOT NULL,
+    billing_id INT NOT NULL,
     prescription_item_id INT NOT NULL,
     quantity INT NOT NULL,
     unit_price DECIMAL(10,2) NOT NULL,
     subtotal DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
-    FOREIGN KEY (pharmacy_bill_id) REFERENCES pharmacy_bills(id) ON DELETE CASCADE,
+    FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE CASCADE,
     FOREIGN KEY (prescription_item_id) REFERENCES prescription_items(id) ON DELETE CASCADE
 );
 
@@ -361,7 +348,7 @@ BEGIN
 END$$
 
 -- 5. Auto-Billing Consultation fee on completion
-CREATE TRIGGER generate_consultation_bill_on_completion
+CREATE TRIGGER generate_billing_on_completion
 AFTER UPDATE ON appointments
 FOR EACH ROW
 BEGIN
@@ -372,8 +359,8 @@ BEGIN
         FROM doctors
         WHERE id = NEW.doctor_id;
         
-        INSERT INTO consultation_bills (appointment_id, patient_id, consultation_fee, payment_status)
-        VALUES (NEW.id, NEW.patient_id, doc_fee, 'pending')
+        INSERT INTO billing (appointment_id, patient_id, consultation_fee, medicine_charges, payment_status)
+        VALUES (NEW.id, NEW.patient_id, doc_fee, 0.00, 'pending')
         ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP;
     END IF;
 END$$
@@ -397,7 +384,7 @@ END$$
 
 -- 7. Dispense Stock Control: Check stock quantity before pharmacy item dispense
 CREATE TRIGGER check_pharmacy_stock_before_dispense
-BEFORE INSERT ON pharmacy_bill_items
+BEFORE INSERT ON billing_items
 FOR EACH ROW
 BEGIN
     DECLARE current_stock INT;
@@ -417,13 +404,12 @@ BEGIN
     END IF;
 END$$
 
--- 8. Dispense Stock Control: Decrement stock and update pharmacy bill amount
+-- 8. Dispense Stock Control: Decrement stock
 CREATE TRIGGER decrement_stock_on_dispense
-AFTER INSERT ON pharmacy_bill_items
+AFTER INSERT ON billing_items
 FOR EACH ROW
 BEGIN
     DECLARE med_id INT;
-    DECLARE item_cost DECIMAL(10,2);
     
     -- Get medicine ID from prescription_items
     SELECT medicine_id INTO med_id
@@ -434,16 +420,45 @@ BEGIN
     UPDATE medicines
     SET stock_quantity = stock_quantity - NEW.quantity
     WHERE id = med_id;
-    
-    SET item_cost = NEW.unit_price * NEW.quantity;
-    
-    -- Update pharmacy_bills amount
-    UPDATE pharmacy_bills
-    SET total_amount = total_amount + item_cost
-    WHERE id = NEW.pharmacy_bill_id;
 END$$
 
--- 9. Trigger to auto-restock a medicine after request approval
+-- 9. Recalculate medicine charges on bill: Insert
+CREATE TRIGGER after_billing_item_insert
+AFTER INSERT ON billing_items
+FOR EACH ROW
+BEGIN
+    UPDATE billing
+    SET medicine_charges = (
+        SELECT COALESCE(SUM(subtotal), 0.00) FROM billing_items WHERE billing_id = NEW.billing_id
+    )
+    WHERE id = NEW.billing_id;
+END$$
+
+-- 10. Recalculate medicine charges on bill: Update
+CREATE TRIGGER after_billing_item_update
+AFTER UPDATE ON billing_items
+FOR EACH ROW
+BEGIN
+    UPDATE billing
+    SET medicine_charges = (
+        SELECT COALESCE(SUM(subtotal), 0.00) FROM billing_items WHERE billing_id = NEW.billing_id
+    )
+    WHERE id = NEW.billing_id;
+END$$
+
+-- 11. Recalculate medicine charges on bill: Delete
+CREATE TRIGGER after_billing_item_delete
+AFTER DELETE ON billing_items
+FOR EACH ROW
+BEGIN
+    UPDATE billing
+    SET medicine_charges = (
+        SELECT COALESCE(SUM(subtotal), 0.00) FROM billing_items WHERE billing_id = OLD.billing_id
+    )
+    WHERE id = OLD.billing_id;
+END$$
+
+-- 12. Trigger to auto-restock a medicine after request approval
 CREATE TRIGGER after_restock_approved
 AFTER UPDATE ON medicine_requests
 FOR EACH ROW
