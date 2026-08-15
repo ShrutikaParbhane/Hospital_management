@@ -15,6 +15,8 @@ def run_tests():
     cursor = conn.cursor(dictionary=True)
     test_appointment_id = None
     test_prescription_id = None
+    restock_req_id = None
+    new_med_req_id = None
     test_patient_id = 1 # Alice Green (PAT-1)
     test_doctor_id = 1  # Dr. Emily Carter (DOC-1, available Mon,Wed,Fri 09:00 - 13:00)
 
@@ -143,7 +145,7 @@ def run_tests():
         med_init = cursor.fetchone()
         print(f"  Initial stock of {med_init['name']}: {med_init['stock_quantity']} units.")
 
-        # Test 5a: Exceed Stock (Try prescribing 200 units, when stock is 100)
+        # Test 5a: Exceed Stock (Try prescribing 200 units, when stock is 5)
         try:
             cursor.execute("""
                 INSERT INTO prescription_items (prescription_id, medicine_id, dosage, frequency, duration_days)
@@ -157,18 +159,18 @@ def run_tests():
             else:
                 print(f"  [FAIL] Unexpected stock check error: {e}")
 
-        # Test 5b: Valid Prescription & Bill Recalculation (Prescribe 10 units)
+        # Test 5b: Valid Prescription & Bill Recalculation (Prescribe 3 units)
         cursor.execute("""
             INSERT INTO prescription_items (prescription_id, medicine_id, dosage, frequency, duration_days)
-            VALUES (%s, 1, '500mg', 'twice daily', 10)
+            VALUES (%s, 1, '500mg', 'twice daily', 3)
         """, (test_prescription_id,))
         conn.commit()
-        print("  [PASS] Prescribed 10 units of Amoxicillin successfully.")
+        print("  [PASS] Prescribed 3 units of Amoxicillin successfully.")
 
         # Check stock decremented (Trigger: decrement_stock_and_bill)
         cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 1")
         med_final = cursor.fetchone()
-        expected_stock = med_init['stock_quantity'] - 10
+        expected_stock = med_init['stock_quantity'] - 3
         if med_final['stock_quantity'] == expected_stock:
             print(f"  [PASS] Stock decremented to {med_final['stock_quantity']}.")
         else:
@@ -177,12 +179,91 @@ def run_tests():
         # Check billing updated (Trigger: decrement_stock_and_bill)
         cursor.execute("SELECT * FROM billing WHERE appointment_id = %s", (test_appointment_id,))
         updated_bill = cursor.fetchone()
-        expected_med_charges = float(med_init['unit_price']) * 10 # 1.50 * 10 = 15.00
-        expected_total = 150.00 + expected_med_charges # 165.00
+        expected_med_charges = float(med_init['unit_price']) * 3 # 1.50 * 3 = 4.50
+        expected_total = 150.00 + expected_med_charges # 154.50
         if updated_bill and float(updated_bill['medicine_charges']) == expected_med_charges and float(updated_bill['total_amount']) == expected_total:
             print(f"  [PASS] Bill charges updated dynamically. medicine_charges = ${updated_bill['medicine_charges']}, total_amount = ${updated_bill['total_amount']}.")
         else:
             print(f"  [FAIL] Bill did not recalculate correctly. Expected med charges: {expected_med_charges}, Total: {expected_total}. Found: {updated_bill}")
+
+
+        # =======================================================
+        # 6. RECEPTIONIST LINK PROFILE TESTS
+        # =======================================================
+        print("\n[Test 6] Verifying Receptionist Table Linking...")
+        cursor.execute("""
+            SELECT r.employee_code, r.shift, u.name 
+            FROM receptionists r 
+            JOIN users u ON r.user_id = u.id 
+            WHERE u.email = 'receptionist@hospital.com'
+        """)
+        rec_profile = cursor.fetchone()
+        if rec_profile and rec_profile['employee_code'] == 'EMP-REC01' and rec_profile['shift'] == 'morning':
+            print(f"  [PASS] Receptionist profile linked. Employee: {rec_profile['name']}, Code: {rec_profile['employee_code']}, Shift: {rec_profile['shift']}.")
+        else:
+            print("  [FAIL] Failed: Receptionist profile linked lookup error.")
+
+
+        # =======================================================
+        # 7. MEDICINE RESTOCK TRIGGER TESTS
+        # =======================================================
+        print("\n[Test 7] Verifying Restock Approval Trigger Cascade...")
+        # Get initial stock of Ibuprofen (ID: 2)
+        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 2")
+        ibu_init = cursor.fetchone()['stock_quantity']
+        
+        # Insert a pending request for Ibuprofen restock
+        cursor.execute("""
+            INSERT INTO medicine_requests (requested_by, request_type, medicine_id, quantity_requested, status)
+            VALUES (3, 'restock', 2, 50, 'pending')
+        """)
+        restock_req_id = cursor.lastrowid
+        conn.commit()
+        
+        # Approve request
+        cursor.execute("""
+            UPDATE medicine_requests 
+            SET status = 'approved', reviewed_by = 1, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (restock_req_id,))
+        conn.commit()
+        
+        # Check stock incremented
+        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 2")
+        ibu_final = cursor.fetchone()['stock_quantity']
+        if ibu_final == ibu_init + 50:
+            print(f"  [PASS] Restock approved trigger fired. Stock incremented: {ibu_init} -> {ibu_final}.")
+        else:
+            print(f"  [FAIL] Failed: Stock not incremented. Expected: {ibu_init + 50}, Found: {ibu_final}.")
+
+
+        # =======================================================
+        # 8. NEW MEDICINE INSERTION TRIGGER TESTS
+        # =======================================================
+        print("\n[Test 8] Verifying New Medicine Approval Trigger Cascade...")
+        # Insert a pending request for New Medicine (Aspirin)
+        cursor.execute("""
+            INSERT INTO medicine_requests (requested_by, request_type, medicine_name, category, manufacturer, quantity_requested, status)
+            VALUES (3, 'new_medicine', 'Aspirin 100mg', 'Analgesic', 'Bayer', 100, 'pending')
+        """)
+        new_med_req_id = cursor.lastrowid
+        conn.commit()
+        
+        # Approve request
+        cursor.execute("""
+            UPDATE medicine_requests 
+            SET status = 'approved', reviewed_by = 1, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (new_med_req_id,))
+        conn.commit()
+        
+        # Verify new medicine row exists in medicines catalog
+        cursor.execute("SELECT * FROM medicines WHERE name = 'Aspirin 100mg'")
+        new_med_row = cursor.fetchone()
+        if new_med_row and new_med_row['stock_quantity'] == 100 and float(new_med_row['unit_price']) == 0.00:
+            print(f"  [PASS] New medicine approved trigger fired. Medicine '{new_med_row['name']}' automatically created in catalog with stock {new_med_row['stock_quantity']} and default price $0.00.")
+        else:
+            print("  [FAIL] Failed: New medicine row was not created correctly.")
 
     except Exception as ex:
         print(f"TEST SUITE FAILURE: {ex}")
@@ -196,8 +277,15 @@ def run_tests():
             if test_appointment_id:
                 cursor.execute("DELETE FROM billing WHERE appointment_id = %s", (test_appointment_id,))
                 cursor.execute("DELETE FROM appointments WHERE id = %s", (test_appointment_id,))
-            # Reset stock
-            cursor.execute("UPDATE medicines SET stock_quantity = 100 WHERE id = 1")
+            if restock_req_id:
+                cursor.execute("DELETE FROM medicine_requests WHERE id = %s", (restock_req_id,))
+            if new_med_req_id:
+                cursor.execute("DELETE FROM medicine_requests WHERE id = %s", (new_med_req_id,))
+                cursor.execute("DELETE FROM medicines WHERE name = 'Aspirin 100mg'")
+            # Reset stock of Amoxicillin
+            cursor.execute("UPDATE medicines SET stock_quantity = 5 WHERE id = 1")
+            # Reset stock of Ibuprofen
+            cursor.execute("UPDATE medicines SET stock_quantity = 200 WHERE id = 2")
             conn.commit()
             print("Clean up completed.")
         except Exception as clean_ex:

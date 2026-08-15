@@ -32,12 +32,22 @@ def log_audit_action(admin_id, action, target_type, target_id):
 @login_required(roles=['receptionist'])
 def dashboard():
     """Render Receptionist Dashboard containing billing lists, walk-in register, pending confirmations"""
+    receptionist_id = session.get('receptionist_id')
     conn = get_db_connection()
     if not conn:
         return "Database Connection Error", 500
 
     try:
         cursor = conn.cursor(dictionary=True)
+
+        # 0. Fetch Receptionist Profile Info
+        cursor.execute("""
+            SELECT r.id as receptionist_id, r.employee_code, r.shift, u.name, u.email, u.phone
+            FROM receptionists r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.id = %s
+        """, (receptionist_id,))
+        receptionist_info = cursor.fetchone()
 
         # 1. Fetch pending appointments
         cursor.execute("""
@@ -84,6 +94,7 @@ def dashboard():
 
         return render_template(
             'receptionist_dashboard.html',
+            receptionist=receptionist_info,
             pending=pending_appointments,
             bills=bills,
             doctors=doctors

@@ -50,6 +50,39 @@ def dashboard():
         """)
         audit_logs = cursor.fetchall()
 
+        # 4. Fetch receptionist lists
+        cursor.execute("""
+            SELECT r.id as receptionist_id, u.name, u.email, u.phone, r.employee_code, r.shift, r.is_active
+            FROM receptionists r
+            JOIN users u ON r.user_id = u.id
+            ORDER BY u.name ASC
+        """)
+        receptionists = cursor.fetchall()
+
+        # 5. Fetch low-stock medicines
+        cursor.execute("""
+            SELECT id, name, category, manufacturer, unit_price, stock_quantity, reorder_level, expiry_date
+            FROM medicines
+            WHERE stock_quantity <= reorder_level
+            ORDER BY stock_quantity ASC
+        """)
+        low_stock = cursor.fetchall()
+
+        # 6. Fetch doctor medicine requests
+        cursor.execute("""
+            SELECT mr.id, mr.request_type, mr.medicine_id, mr.medicine_name, mr.category, mr.manufacturer, mr.quantity_requested, mr.reason, mr.status, mr.requested_at,
+                   u.name as doctor_name, m.name as existing_med_name
+            FROM medicine_requests mr
+            JOIN users u ON mr.requested_by = u.id
+            LEFT JOIN medicines m ON mr.medicine_id = m.id
+            ORDER BY mr.status = 'pending' DESC, mr.requested_at DESC
+        """)
+        requests = cursor.fetchall()
+
+        # 7. Fetch all medicines in catalog
+        cursor.execute("SELECT id, name, category, manufacturer, unit_price, stock_quantity, reorder_level, expiry_date FROM medicines ORDER BY name")
+        all_medicines = cursor.fetchall()
+
         # Format times
         for d in doctors:
             d['slot_start_time'] = str(d['slot_start_time'])[:5]
@@ -67,6 +100,10 @@ def dashboard():
                 'revenue': total_revenue
             },
             doctors=doctors,
+            receptionists=receptionists,
+            low_stock=low_stock,
+            requests=requests,
+            medicines=all_medicines,
             logs=audit_logs
         )
     except Exception as e:
@@ -189,5 +226,156 @@ def edit_doctor(doctor_id):
     except Exception as e:
         if conn:
             conn.rollback()
+            conn.close()
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@admin_bp.route('/receptionist/add', methods=['POST'])
+@login_required(roles=['admin'])
+def add_receptionist():
+    """Register receptionist user and profile in one transaction"""
+    admin_user_id = session.get('user_id')
+    
+    name = request.form.get('name', '').strip()
+    email = request.form.get('email', '').strip().lower()
+    phone = request.form.get('phone', '').strip()
+    password = request.form.get('password', '')
+    employee_code = request.form.get('employee_code', '').strip()
+    shift = request.form.get('shift', '')
+
+    if not all([name, email, phone, password, employee_code, shift]):
+        return jsonify({'success': False, 'message': 'All fields are required.'}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+
+    try:
+        conn.start_transaction()
+        cursor = conn.cursor(dictionary=True)
+
+        # Check duplicate email
+        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Email already registered.'}), 400
+
+        # Check duplicate employee code
+        cursor.execute("SELECT id FROM receptionists WHERE employee_code = %s", (employee_code,))
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Employee code already exists.'}), 400
+
+        # Insert user
+        pwd_hash = generate_password_hash(password)
+        cursor.execute("""
+            INSERT INTO users (name, email, phone, password_hash, role)
+            VALUES (%s, %s, %s, %s, 'receptionist')
+        """, (name, email, phone, pwd_hash))
+        user_id = cursor.lastrowid
+
+        # Insert receptionist profile
+        cursor.execute("""
+            INSERT INTO receptionists (user_id, employee_code, shift, created_by, is_active)
+            VALUES (%s, %s, %s, %s, TRUE)
+        """, (user_id, employee_code, shift, admin_user_id))
+        receptionist_id = cursor.lastrowid
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        log_audit_action(admin_user_id, f"Added receptionist {name}", "receptionist", receptionist_id)
+        return jsonify({'success': True, 'message': 'Receptionist registered successfully!'})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@admin_bp.route('/request/review/<int:request_id>', methods=['POST'])
+@login_required(roles=['admin'])
+def review_medicine_request(request_id):
+    """Approve or reject a doctor's medicine request (fires database triggers)"""
+    admin_user_id = session.get('user_id')
+    data = request.get_json() or {}
+    action = data.get('action') # 'approved' or 'rejected'
+
+    if action not in ['approved', 'rejected']:
+        return jsonify({'success': False, 'message': 'Invalid action. Must be approved or rejected.'}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT status FROM medicine_requests WHERE id = %s", (request_id,))
+        req = cursor.fetchone()
+
+        if not req:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Medicine request not found.'}), 404
+
+        if req['status'] != 'pending':
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'This request has already been reviewed.'}), 400
+
+        # Update status - this will fire after_restock_approved or after_new_medicine_approved triggers!
+        cursor.execute("""
+            UPDATE medicine_requests
+            SET status = %s, reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (action, admin_user_id, request_id))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        log_audit_action(admin_user_id, f"Reviewed medicine request ID {request_id} to status: {action}", "medicine_request", request_id)
+        return jsonify({'success': True, 'message': f'Request successfully {action}!'})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@admin_bp.route('/medicine/edit/<int:med_id>', methods=['POST'])
+@login_required(roles=['admin'])
+def edit_medicine_price(med_id):
+    """Edit medicine price or reorder level"""
+    admin_user_id = session.get('user_id')
+    data = request.get_json() or {}
+    unit_price = float(data.get('unit_price', 0.00))
+    reorder_level = int(data.get('reorder_level', 10))
+
+    if unit_price < 0 or reorder_level < 0:
+        return jsonify({'success': False, 'message': 'Invalid numeric values.'}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE medicines
+            SET unit_price = %s, reorder_level = %s
+            WHERE id = %s
+        """, (unit_price, reorder_level, med_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        log_audit_action(admin_user_id, f"Updated medicine price/reorder for ID {med_id}", "medicine", med_id)
+        return jsonify({'success': True, 'message': 'Medicine details updated successfully!'})
+    except Exception as e:
+        if conn:
             conn.close()
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500

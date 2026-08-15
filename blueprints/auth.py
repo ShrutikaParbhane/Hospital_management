@@ -75,6 +75,11 @@ def login():
             row = cursor.fetchone()
             if row:
                 session['doctor_id'] = row['id']
+        elif user['role'] == 'receptionist':
+            cursor.execute("SELECT id FROM receptionists WHERE user_id = %s", (user['id'],))
+            row = cursor.fetchone()
+            if row:
+                session['receptionist_id'] = row['id']
         cursor.close()
         conn.close()
 

@@ -2,7 +2,8 @@
 -- HOSPITAL APPOINTMENT & PRESCRIPTION SYSTEM - DATABASE SCHEMA
 -- =======================================================
 
-CREATE DATABASE IF NOT EXISTS hospital_db;
+DROP DATABASE IF EXISTS hospital_db;
+CREATE DATABASE hospital_db;
 USE hospital_db;
 
 -- Enable event scheduler (requires appropriate privileges)
@@ -53,7 +54,22 @@ CREATE TABLE IF NOT EXISTS patients (
 );
 
 -- =======================================================
--- 4. APPOINTMENTS TABLE
+-- 4. RECEPTIONISTS TABLE (Extends users)
+-- =======================================================
+CREATE TABLE IF NOT EXISTS receptionists (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    employee_code VARCHAR(20) UNIQUE NOT NULL,
+    shift ENUM('morning', 'evening', 'night') NOT NULL,
+    created_by INT NOT NULL, -- Admin user ID
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- =======================================================
+-- 5. APPOINTMENTS TABLE
 -- =======================================================
 CREATE TABLE IF NOT EXISTS appointments (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -71,7 +87,7 @@ CREATE TABLE IF NOT EXISTS appointments (
 );
 
 -- =======================================================
--- 5. PRESCRIPTIONS TABLE (1:1 with completed appointments)
+-- 6. PRESCRIPTIONS TABLE (1:1 with completed appointments)
 -- =======================================================
 CREATE TABLE IF NOT EXISTS prescriptions (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -87,7 +103,7 @@ CREATE TABLE IF NOT EXISTS prescriptions (
 );
 
 -- =======================================================
--- 6. MEDICINES TABLE
+-- 7. MEDICINES TABLE
 -- =======================================================
 CREATE TABLE IF NOT EXISTS medicines (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -96,11 +112,12 @@ CREATE TABLE IF NOT EXISTS medicines (
     category VARCHAR(50) NOT NULL,
     unit_price DECIMAL(10,2) NOT NULL,
     stock_quantity INT NOT NULL,
+    reorder_level INT DEFAULT 10,
     expiry_date DATE NOT NULL
 );
 
 -- =======================================================
--- 7. PRESCRIPTION ITEMS TABLE (Junction Table)
+-- 8. PRESCRIPTION ITEMS TABLE (Junction Table)
 -- =======================================================
 CREATE TABLE IF NOT EXISTS prescription_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -114,7 +131,7 @@ CREATE TABLE IF NOT EXISTS prescription_items (
 );
 
 -- =======================================================
--- 8. BILLING TABLE
+-- 9. BILLING TABLE
 -- =======================================================
 CREATE TABLE IF NOT EXISTS billing (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -132,7 +149,29 @@ CREATE TABLE IF NOT EXISTS billing (
 );
 
 -- =======================================================
--- 9. AUDIT LOGS TABLE
+-- 10. MEDICINE REQUESTS TABLE
+-- =======================================================
+CREATE TABLE IF NOT EXISTS medicine_requests (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    requested_by INT NOT NULL,                     -- Doctor user_id
+    request_type ENUM('new_medicine', 'restock') NOT NULL,
+    medicine_id INT NULL,                          -- Null if new_medicine
+    medicine_name VARCHAR(100) NULL,               -- Null if restock
+    category VARCHAR(50) NULL,
+    manufacturer VARCHAR(100) NULL,
+    quantity_requested INT NOT NULL,
+    reason VARCHAR(255) NULL,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    reviewed_by INT NULL,                          -- Admin user_id
+    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMP NULL,
+    FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (medicine_id) REFERENCES medicines(id) ON DELETE SET NULL,
+    FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- =======================================================
+-- 11. AUDIT LOGS TABLE
 -- =======================================================
 CREATE TABLE IF NOT EXISTS audit_logs (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -241,7 +280,6 @@ BEGIN
     DECLARE doc_active BOOLEAN;
     DECLARE app_day VARCHAR(10);
     
-    -- Check availability details only if slot times or date or doctor is changing
     IF NEW.doctor_id != OLD.doctor_id OR NEW.appointment_date != OLD.appointment_date OR NEW.start_time != OLD.start_time OR NEW.end_time != OLD.end_time THEN
         SELECT available_days, slot_start_time, slot_end_time, is_active
         INTO doc_days, doc_start, doc_end, doc_active
@@ -327,11 +365,37 @@ BEGIN
     FROM prescriptions
     WHERE id = NEW.prescription_id;
     
-    -- Update bill (increment medicine charges and total amount)
+    -- Update bill
     UPDATE billing
     SET medicine_charges = medicine_charges + item_cost,
         total_amount = total_amount + item_cost
     WHERE appointment_id = app_id;
+END$$
+
+-- 8. Trigger to auto-restock a medicine after request approval
+CREATE TRIGGER after_restock_approved
+AFTER UPDATE ON medicine_requests
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'approved' AND OLD.status = 'pending' 
+       AND NEW.request_type = 'restock' THEN
+        UPDATE medicines 
+        SET stock_quantity = stock_quantity + NEW.quantity_requested 
+        WHERE id = NEW.medicine_id;
+    END IF;
+END$$
+
+-- 9. Trigger to auto-create a new medicine row after request approval
+CREATE TRIGGER after_new_medicine_approved
+AFTER UPDATE ON medicine_requests
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'approved' AND OLD.status = 'pending' 
+       AND NEW.request_type = 'new_medicine' THEN
+        -- Insert new medicine, setting default unit price to 0.00 and default expiry to 1 year from now
+        INSERT INTO medicines (name, category, manufacturer, unit_price, stock_quantity, reorder_level, expiry_date)
+        VALUES (NEW.medicine_name, NEW.category, NEW.manufacturer, 0.00, NEW.quantity_requested, 10, DATE_ADD(CURDATE(), INTERVAL 1 YEAR));
+    END IF;
 END$$
 
 DELIMITER ;
@@ -357,10 +421,16 @@ DO
 -- 1. Insert Admin (password: admin123)
 INSERT INTO users (name, email, phone, password_hash, role) VALUES
 ('Admin User', 'admin@hospital.com', '9999999999', 'scrypt:32768:8:1$6OSY8xNkzIJL3vtD$73c813e15c36c141375490aa6d5ecea13b42cb6ca562f6b95323142db8418cbd304a9e1567045ed7f776f219422bddac643c767583acce0c823b19cbd9b5384b', 'admin');
+SET @admin_user_id = LAST_INSERT_ID();
 
--- 2. Insert Receptionist (password: receptionist123)
+-- 2. Insert Receptionist User (password: receptionist123)
 INSERT INTO users (name, email, phone, password_hash, role) VALUES
 ('Receptionist Rose', 'receptionist@hospital.com', '8888888888', 'scrypt:32768:8:1$KkQbppQyLIGfRt8D$f813d986738c2ad25ce11cc46df323291995e0a709c3dbff511ca7403788c5b5923681ec9db23802b54a17b32764b828994b3b162fde6c31748f4690bee8aae3', 'receptionist');
+SET @receptionist_user_id = LAST_INSERT_ID();
+
+-- Insert Receptionist profile
+INSERT INTO receptionists (user_id, employee_code, shift, created_by, is_active) VALUES
+(@receptionist_user_id, 'EMP-REC01', 'morning', @admin_user_id, TRUE);
 
 -- 3. Insert Doctors
 -- Doctor 1: Cardiology (password: doctor123)
@@ -406,11 +476,11 @@ INSERT INTO patients (user_id, dob, gender, blood_group, address, emergency_cont
 (@patient_user_2, '1988-11-23', 'male', 'O-', '456 Elm St, Townsville', '9123456789');
 
 
--- 5. Insert Medicines
-INSERT INTO medicines (name, manufacturer, category, unit_price, stock_quantity, expiry_date) VALUES
-('Amoxicillin 500mg', 'Pfizer', 'Antibiotic', 1.50, 100, '2028-12-31'),
-('Ibuprofen 400mg', 'Bayer', 'Analgesic', 0.80, 200, '2027-06-30'),
-('Paracetamol 650mg', 'GSK', 'Antipyretic', 0.50, 500, '2029-01-15'),
-('Metformin 1000mg', 'Merck', 'Antidiabetic', 1.20, 150, '2028-09-20'),
-('Atorvastatin 20mg', 'Viatris', 'Statin', 2.00, 120, '2027-11-10'),
-('Cetirizine 10mg', 'McNeil', 'Antihistamine', 0.60, 250, '2028-03-05');
+-- 5. Insert Medicines (Amoxicillin set below reorder level to trigger low-stock alert)
+INSERT INTO medicines (name, manufacturer, category, unit_price, stock_quantity, reorder_level, expiry_date) VALUES
+('Amoxicillin 500mg', 'Pfizer', 'Antibiotic', 1.50, 5, 10, '2028-12-31'),
+('Ibuprofen 400mg', 'Bayer', 'Analgesic', 0.80, 200, 10, '2027-06-30'),
+('Paracetamol 650mg', 'GSK', 'Antipyretic', 0.50, 500, 15, '2029-01-15'),
+('Metformin 1000mg', 'Merck', 'Antidiabetic', 1.20, 150, 10, '2028-09-20'),
+('Atorvastatin 20mg', 'Viatris', 'Statin', 2.00, 120, 10, '2027-11-10'),
+('Cetirizine 10mg', 'McNeil', 'Antihistamine', 0.60, 250, 10, '2028-03-05');

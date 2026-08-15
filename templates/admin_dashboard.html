@@ -64,13 +64,34 @@
         </div>
     </div>
 
+    <!-- Low Stock Alerts -->
+    {% if low_stock %}
+        <div class="bg-rose-50 border border-rose-100 rounded-2xl p-4 flex items-start space-x-3 text-rose-800">
+            <i class="fa-solid fa-triangle-exclamation text-rose-600 text-xl mt-0.5"></i>
+            <div class="space-y-1">
+                <h4 class="font-bold text-sm">Critical Inventory Alert: Low Stock Detected!</h4>
+                <ul class="text-xs list-disc list-inside space-y-0.5 opacity-90">
+                    {% for med in low_stock %}
+                        <li><strong>{{ med.name }}</strong> (Category: {{ med.category }}) — Only <strong>{{ med.stock_quantity }} units</strong> remaining (Reorder Level: {{ med.reorder_level }} units).</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    {% endif %}
+
     <!-- Toggles / Tabs for Management Sections -->
-    <div class="flex space-x-4 border-b border-slate-100 pb-px">
+    <div class="flex space-x-4 border-b border-slate-100 pb-px flex-wrap gap-y-2">
         <button onclick="switchTab('doctors-tab', this)" class="tab-btn border-b-2 border-emerald-500 text-emerald-600 font-bold px-4 py-2.5 text-sm transition-all focus:outline-none">
-            Manage Doctor Profiles
+            Manage Doctors
+        </button>
+        <button onclick="switchTab('receptionists-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
+            Manage Receptionists
+        </button>
+        <button onclick="switchTab('requests-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
+            Medicine Catalog & Requests
         </button>
         <button onclick="switchTab('audit-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
-            System Activity Audit Registry
+            Activity Audit Logs
         </button>
     </div>
 
@@ -133,6 +154,182 @@
                         {% else %}
                             <tr>
                                 <td colspan="7" class="px-6 py-8 text-center text-slate-400 italic">No medical practitioners registered.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2: Receptionists Management -->
+    <div id="receptionists-tab" class="tab-content hidden">
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-address-book text-emerald-600"></i>
+                    <span>Receptionist Accounts Directory</span>
+                </h3>
+                <button onclick="openAddRecModal()" class="text-xs bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
+                    Add Receptionist
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm divide-y divide-slate-50">
+                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Employee</th>
+                            <th class="px-6 py-4">Employee Code</th>
+                            <th class="px-6 py-4">Assigned Shift</th>
+                            <th class="px-6 py-4">Contact</th>
+                            <th class="px-6 py-4">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
+                        {% for rec in receptionists %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4.5 font-bold text-slate-800">{{ rec.name }}</td>
+                                <td class="px-6 py-4.5 font-mono text-xs text-slate-500 font-bold">{{ rec.employee_code }}</td>
+                                <td class="px-6 py-4.5 capitalize text-teal-600">{{ rec.shift }}</td>
+                                <td class="px-6 py-4.5">
+                                    <span class="block text-slate-600 text-xs">{{ rec.email }}</span>
+                                    <span class="text-[10px] text-slate-400">{{ rec.phone }}</span>
+                                </td>
+                                <td class="px-6 py-4.5">
+                                    {% if rec.is_active %}
+                                        <span class="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-semibold">Active</span>
+                                    {% else %}
+                                        <span class="px-2.5 py-0.5 bg-slate-100 text-slate-500 border border-slate-200 rounded-full text-xs font-semibold">Inactive</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-8 text-center text-slate-400 italic">No receptionists registered yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 3: Medicine Requests and Catalog -->
+    <div id="requests-tab" class="tab-content hidden space-y-8">
+        <!-- Requests Review Table -->
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-code-pull-request text-emerald-600"></i>
+                    <span>Doctor Drug Refill & Catalog Additions</span>
+                </h3>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm divide-y divide-slate-50">
+                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Date</th>
+                            <th class="px-6 py-4">Requesting Dr</th>
+                            <th class="px-6 py-4">Type</th>
+                            <th class="px-6 py-4">Medicine details</th>
+                            <th class="px-6 py-4">Qty</th>
+                            <th class="px-6 py-4">Reason</th>
+                            <th class="px-6 py-4">Status</th>
+                            <th class="px-6 py-4 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 font-medium text-slate-700 text-xs">
+                        {% for req in requests %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4 text-slate-400">{{ req.requested_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td class="px-6 py-4 font-bold">{{ req.doctor_name }}</td>
+                                <td class="px-6 py-4 capitalize text-teal-600 font-semibold">{{ req.request_type|replace('_', ' ') }}</td>
+                                <td class="px-6 py-4">
+                                    {% if req.request_type == 'restock' %}
+                                        <strong>{{ req.existing_med_name }}</strong> (ID: {{ req.medicine_id }})
+                                    {% else %}
+                                        <strong>{{ req.medicine_name }}</strong> (New)<br>
+                                        <span class="text-[10px] text-slate-400">Category: {{ req.category }} | Manuf: {{ req.manufacturer }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 font-extrabold text-slate-800">{{ req.quantity_requested }}</td>
+                                <td class="px-6 py-4 text-slate-500 italic">"{{ req.reason }}"</td>
+                                <td class="px-6 py-4 capitalize">
+                                    {% if req.status == 'pending' %}
+                                        <span class="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-full font-semibold">pending</span>
+                                    {% elif req.status == 'approved' %}
+                                        <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-semibold">approved</span>
+                                    {% else %}
+                                        <span class="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-full font-semibold">rejected</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex justify-center space-x-2 items-center">
+                                        {% if req.status == 'pending' %}
+                                            <button onclick="reviewRequest({{ req.id }}, 'approved')" class="bg-emerald-600 text-white font-semibold px-2.5 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">Approve</button>
+                                            <button onclick="reviewRequest({{ req.id }}, 'rejected')" class="bg-rose-600 text-white font-semibold px-2.5 py-1.5 rounded-lg hover:bg-rose-700 transition-colors">Reject</button>
+                                        {% else %}
+                                            <span class="text-slate-400 italic">Reviewed</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="8" class="px-6 py-8 text-center text-slate-400 italic">No medicine requests submitted.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Medicine Stock Catalog Table -->
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-boxes-stacked text-emerald-600"></i>
+                    <span>Pharmacy Drug Catalog</span>
+                </h3>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm divide-y divide-slate-50">
+                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Medicine ID</th>
+                            <th class="px-6 py-4">Medicine Name</th>
+                            <th class="px-6 py-4">Category</th>
+                            <th class="px-6 py-4">Manufacturer</th>
+                            <th class="px-6 py-4">Unit Price</th>
+                            <th class="px-6 py-4">Stock Qty</th>
+                            <th class="px-6 py-4">Reorder Level</th>
+                            <th class="px-6 py-4">Expiry</th>
+                            <th class="px-6 py-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 font-medium text-slate-700 text-xs">
+                        {% for med in medicines %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4 font-mono font-bold">#{{ med.id }}</td>
+                                <td class="px-6 py-4 font-bold text-slate-800">{{ med.name }}</td>
+                                <td class="px-6 py-4">{{ med.category }}</td>
+                                <td class="px-6 py-4">{{ med.manufacturer }}</td>
+                                <td class="px-6 py-4 text-emerald-600 font-bold">${{ med.unit_price }}</td>
+                                <td class="px-6 py-4">
+                                    {% if med.stock_quantity <= med.reorder_level %}
+                                        <span class="text-rose-600 font-bold font-mono">{{ med.stock_quantity }} (Low)</span>
+                                    {% else %}
+                                        <span class="font-mono">{{ med.stock_quantity }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 font-mono">{{ med.reorder_level }}</td>
+                                <td class="px-6 py-4 text-slate-400">{{ med.expiry_date }}</td>
+                                <td class="px-6 py-4">
+                                    <button onclick="openEditMedModal({{ med|tojson }})" class="text-[10px] text-teal-600 border border-teal-100 hover:bg-teal-50 px-2 py-1 rounded">Edit Price</button>
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -333,6 +530,97 @@
         </form>
     </div>
 </div>
+
+<!-- 3. Add Receptionist Modal -->
+<div id="addrec-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-xl p-6 shadow-2xl space-y-6 transform scale-95 transition-all">
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <h3 class="text-lg font-bold text-slate-800">Register New Receptionist</h3>
+            <button onclick="closeAddRecModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div id="addrec-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2">
+            <span id="addrec-alert-msg" class="font-medium"></span>
+        </div>
+
+        <form id="addrec-form" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Receptionist Full Name</label>
+                    <input type="text" name="name" required placeholder="Full Name" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Login Email</label>
+                    <input type="email" name="email" required placeholder="name@hospital.com" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Contact Mobile</label>
+                    <input type="tel" name="phone" required placeholder="10 Digits" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Login Password</label>
+                    <input type="password" name="password" required placeholder="Min 6 characters" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Employee Code</label>
+                    <input type="text" name="employee_code" required placeholder="e.g. EMP-REC02" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase">Shift Schedule</label>
+                    <select name="shift" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                        <option value="morning">Morning Shift</option>
+                        <option value="evening">Evening Shift</option>
+                        <option value="night">Night Shift</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex space-x-3 pt-2">
+                <button type="button" onclick="closeAddRecModal()" class="w-1/2 border border-slate-200 font-bold py-2.5 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="submit" id="addrec-submit-btn" class="w-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-2.5 rounded-xl hover:shadow-lg transition-all">Register Receptionist</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 4. Edit Medicine Modal -->
+<div id="editmed-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-6">
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <div>
+                <h3 class="text-lg font-bold text-slate-800">Update Catalog Medicine</h3>
+                <p class="text-xs text-slate-400" id="edit-med-name-display"></p>
+            </div>
+            <button onclick="closeEditMedModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div id="editmed-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2">
+            <span id="editmed-alert-msg" class="font-medium"></span>
+        </div>
+
+        <form id="editmed-form" class="space-y-4">
+            <input type="hidden" id="edit-med-id">
+            
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Unit Price ($)</label>
+                <input type="number" id="edit-med-price" min="0" step="0.01" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Low Stock Reorder Level</label>
+                <input type="number" id="edit-med-reorder" min="1" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+            </div>
+
+            <div class="flex space-x-3 pt-2">
+                <button type="button" onclick="closeEditMedModal()" class="w-1/2 border border-slate-200 font-bold py-2.5 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="submit" id="editmed-submit-btn" class="w-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-2.5 rounded-xl hover:shadow-lg transition-all">Save Catalog Details</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -461,6 +749,129 @@ document.getElementById('editdoc-form').addEventListener('submit', async functio
     } catch (err) {
         alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
         alertMsg.innerText = 'Network error saving changes.';
+        submitBtn.disabled = false;
+    }
+});
+
+// Add Receptionist Modal controllers
+function openAddRecModal() {
+    document.getElementById('addrec-modal').classList.remove('hidden');
+    document.getElementById('addrec-alert').className = 'hidden';
+    document.getElementById('addrec-form').reset();
+}
+function closeAddRecModal() {
+    document.getElementById('addrec-modal').classList.add('hidden');
+}
+
+// Edit Medicine Modal controllers
+function openEditMedModal(med) {
+    document.getElementById('editmed-modal').classList.remove('hidden');
+    document.getElementById('editmed-alert').className = 'hidden';
+    document.getElementById('edit-med-name-display').innerText = med.name + " (" + med.manufacturer + ")";
+    document.getElementById('edit-med-id').value = med.id;
+    document.getElementById('edit-med-price').value = med.unit_price;
+    document.getElementById('edit-med-reorder').value = med.reorder_level;
+}
+function closeEditMedModal() {
+    document.getElementById('editmed-modal').classList.add('hidden');
+}
+
+// Approve/Reject Medicine Request
+async function reviewRequest(requestId, action) {
+    if (!confirm(`Are you sure you want to change this request to ${action}?`)) return;
+    try {
+        const response = await fetch(`/admin/request/review/${requestId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ action: action })
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert(result.message);
+            window.location.reload();
+        } else {
+            alert(result.message || 'Error updating request.');
+        }
+    } catch (err) {
+        alert('Network connection error.');
+    }
+}
+
+// Submit Register Receptionist Form
+document.getElementById('addrec-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const alertBox = document.getElementById('addrec-alert');
+    const alertMsg = document.getElementById('addrec-alert-msg');
+    const submitBtn = document.getElementById('addrec-submit-btn');
+
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+
+    const formData = new FormData(e.target);
+
+    try {
+        const response = await fetch("{{ url_for('admin.add_receptionist') }}", {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-emerald-50 text-emerald-800 border-emerald-100';
+            alertMsg.innerText = result.message;
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Error registering receptionist.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Network connection error.';
+        submitBtn.disabled = false;
+    }
+});
+
+// Submit Edit Medicine Form
+document.getElementById('editmed-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const alertBox = document.getElementById('editmed-alert');
+    const alertMsg = document.getElementById('editmed-alert-msg');
+    const submitBtn = document.getElementById('editmed-submit-btn');
+    const medId = document.getElementById('edit-med-id').value;
+
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+
+    const payload = {
+        unit_price: parseFloat(document.getElementById('edit-med-price').value),
+        reorder_level: parseInt(document.getElementById('edit-med-reorder').value)
+    };
+
+    try {
+        const response = await fetch(`/admin/medicine/edit/${medId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-emerald-50 text-emerald-800 border-emerald-100';
+            alertMsg.innerText = result.message;
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Error updating medicine catalog.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Network connection error.';
         submitBtn.disabled = false;
     }
 });

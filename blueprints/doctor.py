@@ -10,6 +10,7 @@ doctor_bp = Blueprint('doctor', __name__)
 def dashboard():
     """Render Doctor Dashboard with profile, upcoming schedule, and past history"""
     doctor_id = session.get('doctor_id')
+    user_id = session.get('user_id')
     
     conn = get_db_connection()
     if not conn:
@@ -42,6 +43,17 @@ def dashboard():
         cursor.execute("SELECT id, name, category, unit_price, stock_quantity FROM medicines ORDER BY name")
         medicines = cursor.fetchall()
 
+        # 4. Fetch medicine requests submitted by this doctor
+        cursor.execute("""
+            SELECT mr.id, mr.request_type, mr.medicine_id, mr.medicine_name, mr.category, mr.manufacturer, mr.quantity_requested, mr.reason, mr.status, mr.requested_at,
+                   m.name as existing_med_name
+            FROM medicine_requests mr
+            LEFT JOIN medicines m ON mr.medicine_id = m.id
+            WHERE mr.requested_by = %s
+            ORDER BY mr.requested_at DESC
+        """, (user_id,))
+        requests_history = cursor.fetchall()
+
         # Format times
         for app in appointments:
             app['start_time'] = str(app['start_time'])[:5]
@@ -57,7 +69,8 @@ def dashboard():
             'doctor_dashboard.html', 
             doctor=doctor_info, 
             appointments=appointments,
-            medicines=medicines
+            medicines=medicines,
+            requests=requests_history
         )
     except Exception as e:
         if conn:
@@ -156,5 +169,68 @@ def diagnose_and_prescribe():
     except Exception as e:
         if conn:
             conn.rollback()
+            conn.close()
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@doctor_bp.route('/request/add', methods=['POST'])
+@login_required(roles=['doctor'])
+def submit_medicine_request():
+    """Submit restock or new medicine request"""
+    user_id = session.get('user_id')
+    
+    # Determine parameters based on request type
+    request_type = request.form.get('request_type') # 'restock' or 'new_medicine'
+    quantity = request.form.get('quantity_requested')
+    reason = request.form.get('reason', '').strip()
+    
+    if not request_type or not quantity or int(quantity) <= 0:
+        return jsonify({'success': False, 'message': 'Request type and valid positive quantity are required.'}), 400
+        
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+        
+    try:
+        cursor = conn.cursor()
+        
+        if request_type == 'restock':
+            medicine_id = request.form.get('medicine_id')
+            if not medicine_id:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'message': 'Medicine selection is required for restock.'}), 400
+                
+            cursor.execute("""
+                INSERT INTO medicine_requests (requested_by, request_type, medicine_id, quantity_requested, reason, status)
+                VALUES (%s, 'restock', %s, %s, %s, 'pending')
+            """, (user_id, medicine_id, quantity, reason))
+            
+        elif request_type == 'new_medicine':
+            med_name = request.form.get('medicine_name', '').strip()
+            category = request.form.get('category', '').strip()
+            manufacturer = request.form.get('manufacturer', '').strip()
+            
+            if not med_name or not category or not manufacturer:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'message': 'New medicine name, category, and manufacturer are required.'}), 400
+                
+            cursor.execute("""
+                INSERT INTO medicine_requests (requested_by, request_type, medicine_name, category, manufacturer, quantity_requested, reason, status)
+                VALUES (%s, 'new_medicine', %s, %s, %s, %s, %s, 'pending')
+            """, (user_id, med_name, category, manufacturer, quantity, reason))
+            
+        else:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Invalid request type.'}), 400
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Medicine request submitted to administrator successfully!'})
+    except Exception as e:
+        if conn:
             conn.close()
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500

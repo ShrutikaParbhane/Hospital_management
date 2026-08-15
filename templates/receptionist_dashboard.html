@@ -5,10 +5,21 @@
 {% block content %}
 <div class="space-y-8 py-6">
     <!-- Header -->
-    <div class="flex justify-between items-center">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Reception Desk</h1>
             <p class="text-slate-400 text-sm">Register walk-in patients, confirm appointments, and collect payments</p>
+        </div>
+        <!-- Receptionist Profile Info -->
+        <div class="bg-white border border-slate-100 rounded-xl px-4 py-2.5 shadow-sm text-xs text-slate-500 space-y-1">
+            <div class="flex items-center space-x-2">
+                <span class="font-bold text-slate-800">{{ receptionist.name }}</span>
+                <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-semibold">{{ receptionist.employee_code }}</span>
+            </div>
+            <div class="flex space-x-4">
+                <span>Shift: <strong class="capitalize text-slate-700">{{ receptionist.shift }}</strong></span>
+                <span>Phone: <strong class="text-slate-700">{{ receptionist.phone }}</strong></span>
+            </div>
         </div>
     </div>
 
