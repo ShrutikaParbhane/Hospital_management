@@ -216,10 +216,11 @@ def get_prescription_items(prescription_id):
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT pi.id, m.name as medicine_name, pi.dosage, pi.frequency, pi.duration_days, 
-                   m.unit_price, m.stock_quantity, pi.dispensed, m.expiry_date
+            SELECT pi.id, m.name as medicine_name, pi.dosage, pi.frequency, pi.duration_days, pi.quantity,
+                   m.unit_price, s.total_stock AS stock_quantity, pi.dispensed, s.nearest_expiry AS expiry_date
             FROM prescription_items pi
             JOIN medicines m ON pi.medicine_id = m.id
+            JOIN medicine_stock_summary s ON m.id = s.medicine_id
             WHERE pi.prescription_id = %s
         """, (prescription_id,))
         items = cursor.fetchall()
@@ -228,8 +229,8 @@ def get_prescription_items(prescription_id):
         import datetime
         today = datetime.date.today()
         for item in items:
-            item['is_expired'] = (item['expiry_date'] < today)
-            item['expiry_date'] = str(item['expiry_date'])
+            item['is_expired'] = (item['expiry_date'] < today) if item['expiry_date'] else False
+            item['expiry_date'] = str(item['expiry_date']) if item['expiry_date'] else 'N/A'
             
         cursor.close()
         conn.close()
@@ -283,7 +284,7 @@ def dispense_prescription(prescription_id):
         # 3. Dispense selected items
         for item_id in item_ids:
             cursor.execute("""
-                SELECT pi.id, pi.medicine_id, pi.duration_days as quantity, m.unit_price, pi.dispensed
+                SELECT pi.id, pi.medicine_id, pi.quantity, m.unit_price, pi.dispensed
                 FROM prescription_items pi
                 JOIN medicines m ON pi.medicine_id = m.id
                 WHERE pi.id = %s AND pi.prescription_id = %s
@@ -292,17 +293,17 @@ def dispense_prescription(prescription_id):
             
             if not item:
                 raise Exception(f"Invalid prescription item ID: {item_id}.")
-            if item['dispensed']:
-                raise Exception("Item has already been dispensed.")
+            if item['dispensed'] != 'pending':
+                raise Exception(f"Item status is {item['dispensed']}, cannot dispense.")
                 
-            # Insert into billing_items (triggers decrement_stock_on_dispense, check_pharmacy_stock_before_dispense, and after_billing_item_insert)
+            # Insert into billing_items (triggers decrement_stock_on_dispense, check_pharmacy_stock_before_dispense)
             cursor.execute("""
                 INSERT INTO billing_items (billing_id, prescription_item_id, quantity, unit_price)
                 VALUES (%s, %s, %s, %s)
             """, (billing_id, item['id'], item['quantity'], item['unit_price']))
             
             # Update prescription_items status to dispensed
-            cursor.execute("UPDATE prescription_items SET dispensed = TRUE WHERE id = %s", (item_id,))
+            cursor.execute("UPDATE prescription_items SET dispensed = 'dispensed' WHERE id = %s", (item_id,))
             
         conn.commit()
         cursor.close()
@@ -402,6 +403,74 @@ def register_walk_in():
         if e.sqlstate == '45000':
             return jsonify({'success': False, 'message': f"Database Trigger Refusal: {e.msg}"}), 400
         return jsonify({'success': False, 'message': f"Database error: {e.msg}"}), 500
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@receptionist_bp.route('/prescription/item/decline/<int:item_id>', methods=['POST'])
+@login_required(roles=['receptionist'])
+def decline_prescription_item(item_id):
+    """Waive a prescription item, setting status to 'declined' and subtracting from billing medicine charges"""
+    receptionist_user_id = session.get('user_id')
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+        
+    try:
+        conn.start_transaction()
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. Fetch item details, prescription, and patient billing row
+        cursor.execute("""
+            SELECT pi.id, pi.prescription_id, pi.medicine_id, pi.quantity, pi.dispensed,
+                   m.unit_price, p.appointment_id
+            FROM prescription_items pi
+            JOIN medicines m ON pi.medicine_id = m.id
+            JOIN prescriptions p ON pi.prescription_id = p.id
+            WHERE pi.id = %s
+        """, (item_id,))
+        item = cursor.fetchone()
+        
+        if not item:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Prescription item not found.'}), 404
+            
+        if item['dispensed'] != 'pending':
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': f"Cannot waive item. Current status: {item['dispensed']}"}), 400
+            
+        # 2. Get billing row
+        cursor.execute("SELECT id, medicine_charges FROM billing WHERE appointment_id = %s", (item['appointment_id'],))
+        bill = cursor.fetchone()
+        if not bill:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Associated bill not found.'}), 404
+            
+        # 3. Compute cost to waive
+        waived_cost = item['unit_price'] * item['quantity']
+        
+        # 4. Update prescription item status to 'declined'
+        cursor.execute("UPDATE prescription_items SET dispensed = 'declined' WHERE id = %s", (item_id,))
+        
+        # 5. Subtract charges from billing record
+        cursor.execute("""
+            UPDATE billing
+            SET medicine_charges = GREATEST(0.00, medicine_charges - %s)
+            WHERE id = %s
+        """, (waived_cost, bill['id']))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        log_audit_action(receptionist_user_id, f"Waived prescription item ID {item_id}", "prescription_item", item_id)
+        return jsonify({'success': True, 'message': 'Prescription item waived and bill updated successfully!'})
     except Exception as e:
         if conn:
             conn.rollback()

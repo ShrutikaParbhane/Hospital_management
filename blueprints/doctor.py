@@ -40,7 +40,12 @@ def dashboard():
         appointments = cursor.fetchall()
         
         # 3. Fetch medicines list for the prescription dropdown
-        cursor.execute("SELECT id, name, category, unit_price, stock_quantity FROM medicines ORDER BY name")
+        cursor.execute("""
+            SELECT m.id, m.name, m.category, m.unit_price, s.total_stock AS stock_quantity
+            FROM medicines m
+            JOIN medicine_stock_summary s ON m.id = s.medicine_id
+            ORDER BY m.name
+        """)
         medicines = cursor.fetchall()
 
         # 4. Fetch medicine requests submitted by this doctor
@@ -120,38 +125,38 @@ def diagnose_and_prescribe():
 
         patient_id = app['patient_id']
 
-        # 2. Insert Prescription record
+        # 2. Mark Appointment as completed FIRST (fires generate_billing_on_completion trigger to create billing row)
+        cursor.execute("""
+            UPDATE appointments
+            SET status = 'completed'
+            WHERE id = %s
+        """, (appointment_id,))
+
+        # 3. Insert Prescription record
         cursor.execute("""
             INSERT INTO prescriptions (appointment_id, doctor_id, patient_id, diagnosis, status)
             VALUES (%s, %s, %s, %s, 'active')
         """, (appointment_id, doctor_id, patient_id, diagnosis))
         prescription_id = cursor.lastrowid
 
-        # 3. Insert Prescription Items (this will fire BEFORE INSERT triggers to check stock level)
+        # 4. Insert Prescription Items with quantity (triggers before_prescribe_check_expiry and after_prescription_item_insert)
         for med in meds:
             medicine_id = med.get('medicine_id')
             dosage = med.get('dosage', '').strip()
             frequency = med.get('frequency', '').strip()
             duration_days = int(med.get('duration_days', 0))
+            quantity = int(med.get('quantity', 0))
             
-            if not medicine_id or not dosage or not frequency or duration_days <= 0:
+            if not medicine_id or not dosage or not frequency or duration_days <= 0 or quantity <= 0:
                 conn.rollback()
                 cursor.close()
                 conn.close()
-                return jsonify({'success': False, 'message': 'Invalid medicine details. Duration must be greater than 0.'}), 400
+                return jsonify({'success': False, 'message': 'Invalid medicine details. Duration and quantity must be greater than 0.'}), 400
 
-            # Execute insert to run check_medicine_stock database trigger
             cursor.execute("""
-                INSERT INTO prescription_items (prescription_id, medicine_id, dosage, frequency, duration_days)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (prescription_id, medicine_id, dosage, frequency, duration_days))
-
-        # 4. Mark Appointment as completed (this will fire generate_billing_on_completion trigger)
-        cursor.execute("""
-            UPDATE appointments
-            SET status = 'completed'
-            WHERE id = %s
-        """, (appointment_id,))
+                INSERT INTO prescription_items (prescription_id, medicine_id, dosage, frequency, duration_days, quantity)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (prescription_id, medicine_id, dosage, frequency, duration_days, quantity))
 
         conn.commit()
         cursor.close()

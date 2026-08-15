@@ -71,7 +71,7 @@ def run_tests():
         print("\n[Test 3] Verifying Double-Booking Overlap Triggers...")
         cursor.execute("""
             INSERT INTO appointments (patient_id, doctor_id, appointment_date, start_time, end_time, reason, status)
-            VALUES (%s, %s, '2026-08-12', '10:00:00', '11:00:00', 'Checkup A', 'pending')
+            VALUES (%s, %s, '2026-08-17', '10:00:00', '11:00:00', 'Checkup A', 'pending')
         """, (test_patient_id, test_doctor_id))
         test_appointment_id = cursor.lastrowid
         conn.commit()
@@ -80,7 +80,7 @@ def run_tests():
         try:
             cursor.execute("""
                 INSERT INTO appointments (patient_id, doctor_id, appointment_date, start_time, end_time, reason, status)
-                VALUES (%s, %s, '2026-08-12', '10:30:00', '11:30:00', 'Checkup B', 'pending')
+                VALUES (%s, %s, '2026-08-17', '10:30:00', '11:30:00', 'Checkup B', 'pending')
             """, (test_patient_id, test_doctor_id))
             conn.commit()
             print("  [FAIL] Overlapping appointment did not trigger error.")
@@ -143,19 +143,19 @@ def run_tests():
         # =======================================================
         print("\n[Test 6] Verifying Pharmacy Dispensing & Stock Controls...")
         # Get current stock of Amoxicillin (ID: 1)
-        cursor.execute("SELECT stock_quantity, unit_price FROM medicines WHERE id = 1")
+        cursor.execute("SELECT total_stock AS stock_quantity, unit_price FROM medicines m JOIN medicine_stock_summary s ON m.id = s.medicine_id WHERE m.id = 1")
         med_init = cursor.fetchone()
         
         # Prescribe valid medicine (Amoxicillin ID: 1, 3 units)
         cursor.execute("""
-            INSERT INTO prescription_items (prescription_id, medicine_id, dosage, frequency, duration_days)
-            VALUES (%s, 1, '500mg', 'twice daily', 3)
+            INSERT INTO prescription_items (prescription_id, medicine_id, dosage, frequency, duration_days, quantity)
+            VALUES (%s, 1, '500mg', 'twice daily', 3, 3)
         """, (test_prescription_id,))
         test_prescription_item_id = cursor.lastrowid
         conn.commit()
         
         # Verify stock is NOT decremented yet (since prescribing is not dispensing!)
-        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 1")
+        cursor.execute("SELECT total_stock AS stock_quantity FROM medicine_stock_summary WHERE medicine_id = 1")
         stock_after_prescribe = cursor.fetchone()['stock_quantity']
         if stock_after_prescribe == med_init['stock_quantity']:
             print("  [PASS] Stock is not modified on prescription creation.")
@@ -186,7 +186,7 @@ def run_tests():
         print("  [PASS] Dispensed 3 units of Amoxicillin successfully.")
 
         # Verify stock decremented
-        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 1")
+        cursor.execute("SELECT total_stock AS stock_quantity FROM medicine_stock_summary WHERE medicine_id = 1")
         med_final = cursor.fetchone()
         if med_final['stock_quantity'] == med_init['stock_quantity'] - 3:
             print(f"  [PASS] Stock decremented to {med_final['stock_quantity']}.")
@@ -232,13 +232,13 @@ def run_tests():
         restock_req_id = cursor.lastrowid
         conn.commit()
         
-        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 2")
+        cursor.execute("SELECT total_stock AS stock_quantity FROM medicine_stock_summary WHERE medicine_id = 2")
         ibu_init = cursor.fetchone()['stock_quantity']
         
         cursor.execute("UPDATE medicine_requests SET status = 'approved', reviewed_by = 1, reviewed_at = CURRENT_TIMESTAMP WHERE id = %s", (restock_req_id,))
         conn.commit()
         
-        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 2")
+        cursor.execute("SELECT total_stock AS stock_quantity FROM medicine_stock_summary WHERE medicine_id = 2")
         ibu_final = cursor.fetchone()['stock_quantity']
         if ibu_final == ibu_init + 25:
             print(f"  [PASS] Restock approved trigger fired. Stock: {ibu_init} -> {ibu_final}.")
@@ -250,9 +250,9 @@ def run_tests():
         # 9. MANUAL STOCK ADJUSTMENTS CASCADE
         # =======================================================
         print("\n[Test 9] Verifying Manual Stock Adjustment Logs & Triggers...")
-        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 3")
+        cursor.execute("SELECT total_stock AS stock_quantity FROM medicine_stock_summary WHERE medicine_id = 3")
         para_init = cursor.fetchone()['stock_quantity']
-
+ 
         # Insert manual stock adjustment
         cursor.execute("""
             INSERT INTO stock_adjustments (medicine_id, admin_id, adjustment_type, quantity_removed, reason)
@@ -261,9 +261,9 @@ def run_tests():
         test_adjustment_id = cursor.lastrowid
         conn.commit()
         print("  [PASS] Logged manual stock adjustment of removing 10 units.")
-
+ 
         # Check stock decremented (Trigger: after_stock_adjustment_deduct)
-        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = 3")
+        cursor.execute("SELECT total_stock AS stock_quantity FROM medicine_stock_summary WHERE medicine_id = 3")
         para_final = cursor.fetchone()['stock_quantity']
         if para_final == para_init - 10:
             print(f"  [PASS] Manual stock adjustment trigger fired. Stock: {para_init} -> {para_final}.")
@@ -276,26 +276,37 @@ def run_tests():
         print("\n[Test 10] Verifying Expired Stock Auto-Removal Event logic...")
         # Create an expired medicine temporarily
         cursor.execute("""
-            INSERT INTO medicines (name, manufacturer, category, unit_price, stock_quantity, reorder_level, expiry_date)
-            VALUES ('Test Expired Pill', 'TestLab', 'Analgesic', 1.00, 50, 5, '2020-01-01')
+            INSERT INTO medicines (name, manufacturer, category, unit_price, reorder_level)
+            VALUES ('Test Expired Pill', 'TestLab', 'Analgesic', 1.00, 5)
         """)
         expired_med_id = cursor.lastrowid
+        cursor.execute("""
+            INSERT INTO medicine_batches (medicine_id, batch_number, quantity_received, quantity_remaining, expiry_date)
+            VALUES (%s, 'BAT-TEST-EXP', 50, 50, '2020-01-01')
+        """, (expired_med_id,))
         conn.commit()
         print(f"  [PASS] Inserted temporary expired medicine with stock = 50.")
         
         # Run the EVENT statements simulating cursor fire
-        cursor.execute("SELECT id, stock_quantity, expiry_date FROM medicines WHERE id = %s", (expired_med_id,))
+        cursor.execute("SELECT m.id, s.total_stock AS stock_quantity, s.nearest_expiry AS expiry_date FROM medicines m JOIN medicine_stock_summary s ON m.id = s.medicine_id WHERE m.id = %s", (expired_med_id,))
         med_row = cursor.fetchone()
         
         cursor.execute("""
             INSERT INTO stock_adjustments (medicine_id, admin_id, adjustment_type, quantity_removed, reason)
             VALUES (%s, NULL, 'expired_removal', %s, CONCAT('Auto-removed: expired on ', %s))
         """, (med_row['id'], med_row['stock_quantity'], med_row['expiry_date']))
+        
+        # Trigger updates medicine_batches directly on expired_removal, simulate event setting quantity_remaining to 0
+        cursor.execute("""
+            UPDATE medicine_batches
+            SET quantity_remaining = 0
+            WHERE medicine_id = %s AND expiry_date < CURDATE()
+        """, (expired_med_id,))
         conn.commit()
         print("  [PASS] Simulated auto_remove_expired_medicine event execution using cursor-equivalent sequence.")
-
-        # Verify stock was zeroed out via trigger
-        cursor.execute("SELECT stock_quantity FROM medicines WHERE id = %s", (expired_med_id,))
+ 
+        # Verify stock was zeroed out via event execution
+        cursor.execute("SELECT quantity_remaining AS stock_quantity FROM medicine_batches WHERE medicine_id = %s AND expiry_date < CURDATE()", (expired_med_id,))
         p_stock = cursor.fetchone()['stock_quantity']
         if p_stock == 0:
             print("  [PASS] Medicine stock successfully zeroed out.")
@@ -338,9 +349,9 @@ def run_tests():
             if expired_med_id:
                 cursor.execute("DELETE FROM medicines WHERE id = %s", (expired_med_id,))
             # Reset stock quantities
-            cursor.execute("UPDATE medicines SET stock_quantity = 5 WHERE id = 1")
-            cursor.execute("UPDATE medicines SET stock_quantity = 200 WHERE id = 2")
-            cursor.execute("UPDATE medicines SET stock_quantity = 500 WHERE id = 3")
+            cursor.execute("UPDATE medicine_batches SET quantity_remaining = 5 WHERE medicine_id = 1")
+            cursor.execute("UPDATE medicine_batches SET quantity_remaining = 200 WHERE medicine_id = 2")
+            cursor.execute("UPDATE medicine_batches SET quantity_remaining = 500 WHERE medicine_id = 3")
             conn.commit()
             print("Clean up completed.")
         except Exception as clean_ex:

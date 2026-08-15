@@ -336,8 +336,10 @@
                             <tr>
                                 <th class="px-4 py-2 text-center w-12"><input type="checkbox" id="select-all-dispense" onclick="toggleAllDispense(this)"></th>
                                 <th class="px-4 py-2">Medicine</th>
-                                <th class="px-4 py-2">Quantity</th>
-                                <th class="px-4 py-2 text-right">Price</th>
+                                <th class="px-4 py-2">Dosage & Freq</th>
+                                <th class="px-4 py-2 text-right">Dispense Qty</th>
+                                <th class="px-4 py-2 text-right">Total Price</th>
+                                <th class="px-4 py-2 text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody id="dispense-items-tbody" class="divide-y divide-slate-50 font-medium text-slate-700 text-xs">
@@ -416,6 +418,7 @@ async function recordCashPayment(billId) {
 }
 
 // Open and Close Dispensing Console
+// Open and Close Dispensing Console
 async function openDispenseModal(prescriptionId, patientName) {
     const modal = document.getElementById('dispense-modal');
     const tbody = document.getElementById('dispense-items-tbody');
@@ -425,7 +428,7 @@ async function openDispenseModal(prescriptionId, patientName) {
     nameDisplay.innerText = patientName;
     document.getElementById('dispense-prescription-id').value = prescriptionId;
     alertBox.className = 'hidden';
-    tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner animate-spin mr-1"></i> Loading prescription items...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner animate-spin mr-1"></i> Loading prescription items...</td></tr>';
     document.getElementById('select-all-dispense').checked = false;
     modal.classList.remove('hidden');
     
@@ -436,20 +439,27 @@ async function openDispenseModal(prescriptionId, patientName) {
             let html = '';
             result.items.forEach(item => {
                 const expiredLabel = item.is_expired ? ' <span class="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-extrabold font-mono uppercase">Expired</span>' : '';
-                const disabled = (item.dispensed || item.is_expired || item.stock_quantity < item.duration_days) ? 'disabled' : '';
-                const titleText = item.is_expired ? 'Cannot dispense expired medicine' : (item.stock_quantity < item.duration_days ? 'Insufficient stock' : '');
+                const disabled = (item.dispensed !== 'pending' || item.is_expired || item.stock_quantity < item.quantity) ? 'disabled' : '';
+                const titleText = item.is_expired ? 'Cannot dispense expired medicine' : (item.stock_quantity < item.quantity ? 'Insufficient stock' : '');
                 
                 let checkInput = '';
-                if (item.dispensed) {
+                let actionBtn = '';
+                if (item.dispensed === 'dispensed') {
                     checkInput = '<i class="fa-solid fa-circle-check text-emerald-600"></i>';
-                } else if (item.is_expired || item.stock_quantity < item.duration_days) {
+                    actionBtn = '<span class="text-emerald-600 font-semibold text-xs">Dispensed</span>';
+                } else if (item.dispensed === 'declined') {
+                    checkInput = '<i class="fa-solid fa-circle-minus text-slate-400"></i>';
+                    actionBtn = '<span class="text-slate-400 italic text-xs">Waived</span>';
+                } else if (item.is_expired || item.stock_quantity < item.quantity) {
                     checkInput = '<i class="fa-solid fa-circle-xmark text-rose-600" title="' + titleText + '"></i>';
+                    actionBtn = `<button type="button" onclick="declineItem(${prescriptionId}, '${patientName.replace(/'/g, "\\'")}', ${item.id})" class="text-rose-600 hover:text-rose-700 font-bold text-xs">Waive</button>`;
                 } else {
                     checkInput = `<input type="checkbox" name="item_ids" value="${item.id}" class="dispense-item-chk rounded text-emerald-600 focus:ring-emerald-500">`;
+                    actionBtn = `<button type="button" onclick="declineItem(${prescriptionId}, '${patientName.replace(/'/g, "\\'")}', ${item.id})" class="text-rose-600 hover:text-rose-700 font-bold text-xs">Waive</button>`;
                 }
                 
                 html += `
-                    <tr class="hover:bg-slate-50/50 transition-colors ${item.dispensed ? 'opacity-50' : ''}">
+                    <tr class="hover:bg-slate-50/50 transition-colors ${item.dispensed !== 'pending' ? 'opacity-50' : ''}">
                         <td class="px-4 py-3 text-center">${checkInput}</td>
                         <td class="px-4 py-3">
                             <div class="font-bold text-slate-800">${item.medicine_name}${expiredLabel}</div>
@@ -459,20 +469,40 @@ async function openDispenseModal(prescriptionId, patientName) {
                             <span class="block">${item.dosage} | ${item.frequency}</span>
                             <span class="text-[10px] text-slate-400">${item.duration_days} Days / Stock: ${item.stock_quantity}</span>
                         </td>
-                        <td class="px-4 py-3 text-right text-emerald-600 font-bold">$${(item.unit_price * item.duration_days).toFixed(2)}</td>
+                        <td class="px-4 py-3 text-right font-mono text-slate-800">${item.quantity}</td>
+                        <td class="px-4 py-3 text-right text-emerald-600 font-bold">$${(item.unit_price * item.quantity).toFixed(2)}</td>
+                        <td class="px-4 py-3 text-center">${actionBtn}</td>
                     </tr>
                 `;
             });
             tbody.innerHTML = html;
         } else {
-            tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-rose-600 font-semibold">${result.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-rose-600 font-semibold">${result.message}</td></tr>`;
         }
     } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-rose-600 font-semibold">Error loading items from server.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-rose-600 font-semibold">Error loading items from server.</td></tr>';
     }
 }
 function closeDispenseModal() {
     document.getElementById('dispense-modal').classList.add('hidden');
+}
+
+async function declineItem(prescriptionId, patientName, itemId) {
+    if (!confirm("Are you sure you want to waive this medication? The patient will not purchase this item, and its cost will be removed from the bill.")) return;
+    try {
+        const response = await fetch(`/receptionist/prescription/item/decline/${itemId}`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert(result.message);
+            openDispenseModal(prescriptionId, patientName);
+        } else {
+            alert(result.message || 'Failed to waive item.');
+        }
+    } catch (err) {
+        alert('Network connection error.');
+    }
 }
 
 // Master toggle check/uncheck

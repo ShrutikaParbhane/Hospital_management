@@ -225,15 +225,21 @@
                         <label class="text-[10px] font-bold text-slate-500 uppercase">Frequency</label>
                         <input type="text" id="med-frequency" placeholder="e.g. Twice daily" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white">
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div class="space-y-1">
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="space-y-1 col-span-1">
                             <label class="text-[10px] font-bold text-slate-500 uppercase">Days</label>
                             <input type="number" id="med-duration" min="1" placeholder="7" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white">
                         </div>
-                        <button type="button" onclick="addMedicineRow()"
-                                class="bg-teal-600 text-white font-bold rounded-lg text-xs py-2 hover:bg-teal-700 transition-colors flex items-center justify-center">
-                            <i class="fa-solid fa-plus"></i>
-                        </button>
+                        <div class="space-y-1 col-span-1">
+                            <label class="text-[10px] font-bold text-slate-500 uppercase">Total Qty</label>
+                            <input type="number" id="med-quantity" min="1" placeholder="15" class="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white">
+                        </div>
+                        <div class="flex items-end col-span-1 pb-0.5">
+                            <button type="button" onclick="addMedicineRow()"
+                                    class="w-full bg-teal-600 text-white font-bold rounded-lg text-xs py-2 hover:bg-teal-700 transition-colors flex items-center justify-center">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -246,12 +252,13 @@
                                 <th class="px-4 py-2">Dosage</th>
                                 <th class="px-4 py-2">Frequency</th>
                                 <th class="px-4 py-2">Duration</th>
+                                <th class="px-4 py-2">Total Qty</th>
                                 <th class="px-4 py-2">Action</th>
                             </tr>
                         </thead>
                         <tbody id="med-table-body" class="divide-y divide-slate-50 text-slate-700 font-medium">
                             <tr id="empty-table-row">
-                                <td colspan="5" class="px-4 py-6 text-center text-slate-400 italic">No drugs added. Build items above.</td>
+                                <td colspan="6" class="px-4 py-6 text-center text-slate-400 italic">No drugs added. Build items above.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -351,7 +358,7 @@
 
 {% block scripts %}
 <script>
-let prescribedMeds = []; // Array to store {medicine_id, medicine_name, dosage, frequency, duration_days}
+let prescribedMeds = []; // Array to store {medicine_id, medicine_name, dosage, frequency, duration_days, quantity}
 
 function openDiagnoseModal(appointmentId, patientName) {
     document.getElementById('diagnose-modal').classList.remove('hidden');
@@ -374,9 +381,10 @@ function addMedicineRow() {
     const dosage = document.getElementById('med-dosage').value.trim();
     const frequency = document.getElementById('med-frequency').value.trim();
     const duration = parseInt(document.getElementById('med-duration').value);
+    const quantity = parseInt(document.getElementById('med-quantity').value);
 
-    if (!medId || !dosage || !frequency || isNaN(duration) || duration <= 0) {
-        alert("Please specify medicine, dosage, frequency, and valid duration days.");
+    if (!medId || !dosage || !frequency || isNaN(duration) || duration <= 0 || isNaN(quantity) || quantity <= 0) {
+        alert("Please specify medicine, dosage, frequency, duration days, and valid total quantity.");
         return;
     }
 
@@ -384,7 +392,7 @@ function addMedicineRow() {
     const medName = selectedOption.getAttribute('data-name');
     const stock = parseInt(selectedOption.getAttribute('data-stock'));
 
-    if (duration > stock) {
+    if (quantity > stock) {
         alert(`Insufficient stock. Only ${stock} units are currently available.`);
         return;
     }
@@ -400,7 +408,8 @@ function addMedicineRow() {
         medicine_name: medName,
         dosage: dosage,
         frequency: frequency,
-        duration_days: duration
+        duration_days: duration,
+        quantity: quantity
     });
 
     // Reset inputs
@@ -408,6 +417,7 @@ function addMedicineRow() {
     document.getElementById('med-dosage').value = '';
     document.getElementById('med-frequency').value = '';
     document.getElementById('med-duration').value = '';
+    document.getElementById('med-quantity').value = '';
 
     renderMedTable();
 }
@@ -426,7 +436,7 @@ function renderMedTable() {
     if (prescribedMeds.length === 0) {
         tbody.innerHTML = `
             <tr id="empty-table-row">
-                <td colspan="5" class="px-4 py-6 text-center text-slate-400 italic">No drugs added. Build items above.</td>
+                <td colspan="6" class="px-4 py-6 text-center text-slate-400 italic">No drugs added. Build items above.</td>
             </tr>
         `;
         return;
@@ -440,6 +450,7 @@ function renderMedTable() {
             <td class="px-4 py-2.5">${med.dosage}</td>
             <td class="px-4 py-2.5">${med.frequency}</td>
             <td class="px-4 py-2.5">${med.duration_days} Days</td>
+            <td class="px-4 py-2.5">${med.quantity}</td>
             <td class="px-4 py-2.5">
                 <button type="button" onclick="removeMedicineRow(${index})" class="text-rose-600 hover:text-rose-700 text-xs font-bold">Delete</button>
             </td>

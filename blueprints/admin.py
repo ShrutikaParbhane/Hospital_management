@@ -61,12 +61,15 @@ def dashboard():
 
         # 5. Fetch low-stock medicines
         cursor.execute("""
-            SELECT id, name, category, manufacturer, unit_price, stock_quantity, reorder_level, expiry_date
-            FROM medicines
-            WHERE stock_quantity <= reorder_level
-            ORDER BY stock_quantity ASC
+            SELECT m.id, m.name, m.category, m.manufacturer, m.unit_price, s.total_stock AS stock_quantity, m.reorder_level, s.nearest_expiry AS expiry_date
+            FROM medicines m
+            JOIN medicine_stock_summary s ON m.id = s.medicine_id
+            WHERE s.total_stock <= m.reorder_level
+            ORDER BY s.total_stock ASC
         """)
         low_stock = cursor.fetchall()
+        for med in low_stock:
+            med['expiry_date'] = str(med['expiry_date']) if med['expiry_date'] else 'N/A'
 
         # 6. Fetch doctor medicine requests
         cursor.execute("""
@@ -80,19 +83,28 @@ def dashboard():
         requests = cursor.fetchall()
 
         # 7. Fetch all medicines in catalog
-        cursor.execute("SELECT id, name, category, manufacturer, unit_price, stock_quantity, reorder_level, expiry_date FROM medicines ORDER BY name")
+        cursor.execute("""
+            SELECT m.id, m.name, m.category, m.manufacturer, m.unit_price, s.total_stock AS stock_quantity, m.reorder_level, s.nearest_expiry AS expiry_date
+            FROM medicines m
+            JOIN medicine_stock_summary s ON m.id = s.medicine_id
+            ORDER BY m.name
+        """)
         all_medicines = cursor.fetchall()
+        for med in all_medicines:
+            med['expiry_date'] = str(med['expiry_date']) if med['expiry_date'] else 'N/A'
 
         # 8. Fetch expiring medicines alerts (View)
         cursor.execute("SELECT id, name, category, manufacturer, stock_quantity, expiry_date, days_to_expiry FROM expiring_medicines_alert ORDER BY days_to_expiry ASC")
         expiring_medicines = cursor.fetchall()
+        for med in expiring_medicines:
+            med['expiry_date'] = str(med['expiry_date']) if med['expiry_date'] else 'N/A'
 
         # 9. Fetch stock adjustments history
         cursor.execute("""
             SELECT sa.id, sa.adjustment_type, sa.quantity_removed, sa.reason, sa.created_at, m.name as medicine_name, u.name as admin_name
             FROM stock_adjustments sa
             JOIN medicines m ON sa.medicine_id = m.id
-            JOIN users u ON sa.admin_id = u.id
+            LEFT JOIN users u ON sa.admin_id = u.id
             ORDER BY sa.created_at DESC
             LIMIT 20
         """)
@@ -320,6 +332,8 @@ def review_medicine_request(request_id):
     admin_user_id = session.get('user_id')
     data = request.get_json() or {}
     action = data.get('action') # 'approved' or 'rejected'
+    unit_price = data.get('unit_price')
+    expiry_date = data.get('expiry_date')
 
     if action not in ['approved', 'rejected']:
         return jsonify({'success': False, 'message': 'Invalid action. Must be approved or rejected.'}), 400
@@ -346,9 +360,10 @@ def review_medicine_request(request_id):
         # Update status - this will fire after_restock_approved or after_new_medicine_approved triggers!
         cursor.execute("""
             UPDATE medicine_requests
-            SET status = %s, reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP
+            SET status = %s, reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP,
+                unit_price = COALESCE(%s, unit_price), expiry_date = COALESCE(%s, expiry_date)
             WHERE id = %s
-        """, (action, admin_user_id, request_id))
+        """, (action, admin_user_id, unit_price, expiry_date, request_id))
 
         conn.commit()
         cursor.close()
@@ -366,11 +381,12 @@ def review_medicine_request(request_id):
 @admin_bp.route('/medicine/edit/<int:med_id>', methods=['POST'])
 @login_required(roles=['admin'])
 def edit_medicine_price(med_id):
-    """Edit medicine price or reorder level"""
+    """Edit medicine price, reorder level, and nearest batch expiry"""
     admin_user_id = session.get('user_id')
     data = request.get_json() or {}
     unit_price = float(data.get('unit_price', 0.00))
     reorder_level = int(data.get('reorder_level', 10))
+    expiry_date = data.get('expiry_date')
 
     if unit_price < 0 or reorder_level < 0:
         return jsonify({'success': False, 'message': 'Invalid numeric values.'}), 400
@@ -386,14 +402,30 @@ def edit_medicine_price(med_id):
             SET unit_price = %s, reorder_level = %s
             WHERE id = %s
         """, (unit_price, reorder_level, med_id))
+        
+        if expiry_date:
+            cursor.execute("""
+                UPDATE medicine_batches
+                SET expiry_date = %s
+                WHERE id = (
+                    SELECT id FROM (
+                        SELECT id FROM medicine_batches 
+                        WHERE medicine_id = %s AND quantity_remaining > 0 AND expiry_date >= CURDATE()
+                        ORDER BY expiry_date ASC
+                        LIMIT 1
+                    ) tmp
+                )
+            """, (expiry_date, med_id))
+            
         conn.commit()
         cursor.close()
         conn.close()
 
-        log_audit_action(admin_user_id, f"Updated medicine price/reorder for ID {med_id}", "medicine", med_id)
+        log_audit_action(admin_user_id, f"Updated medicine details for ID {med_id}", "medicine", med_id)
         return jsonify({'success': True, 'message': 'Medicine details updated successfully!'})
     except Exception as e:
         if conn:
+            conn.rollback()
             conn.close()
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
@@ -432,8 +464,13 @@ def adjust_inventory():
     try:
         cursor = conn.cursor(dictionary=True)
         
-        # Verify current stock level to prevent adjusting more than available
-        cursor.execute("SELECT stock_quantity, name FROM medicines WHERE id = %s", (medicine_id,))
+        # Verify current stock level from summary to prevent adjusting more than available
+        cursor.execute("""
+            SELECT s.total_stock AS stock_quantity, m.name 
+            FROM medicines m 
+            JOIN medicine_stock_summary s ON m.id = s.medicine_id 
+            WHERE m.id = %s
+        """, (medicine_id,))
         med = cursor.fetchone()
         if not med:
             cursor.close()
