@@ -64,20 +64,36 @@
         </div>
     </div>
 
-    <!-- Low Stock Alerts -->
-    {% if low_stock %}
-        <div class="bg-rose-50 border border-rose-100 rounded-2xl p-4 flex items-start space-x-3 text-rose-800">
-            <i class="fa-solid fa-triangle-exclamation text-rose-600 text-xl mt-0.5"></i>
-            <div class="space-y-1">
-                <h4 class="font-bold text-sm">Critical Inventory Alert: Low Stock Detected!</h4>
-                <ul class="text-xs list-disc list-inside space-y-0.5 opacity-90">
-                    {% for med in low_stock %}
-                        <li><strong>{{ med.name }}</strong> (Category: {{ med.category }}) — Only <strong>{{ med.stock_quantity }} units</strong> remaining (Reorder Level: {{ med.reorder_level }} units).</li>
-                    {% endfor %}
-                </ul>
+    <!-- Low Stock & Expiry Alerts -->
+    <div class="space-y-4">
+        {% if low_stock %}
+            <div class="bg-rose-50 border border-rose-100 rounded-2xl p-4 flex items-start space-x-3 text-rose-800">
+                <i class="fa-solid fa-triangle-exclamation text-rose-600 text-xl mt-0.5"></i>
+                <div class="space-y-1">
+                    <h4 class="font-bold text-sm">Critical Inventory Alert: Low Stock Detected!</h4>
+                    <ul class="text-xs list-disc list-inside space-y-0.5 opacity-90">
+                        {% for med in low_stock %}
+                            <li><strong>{{ med.name }}</strong> (Category: {{ med.category }}) — Only <strong>{{ med.stock_quantity }} units</strong> remaining (Reorder Level: {{ med.reorder_level }} units).</li>
+                        {% endfor %}
+                    </ul>
+                </div>
             </div>
-        </div>
-    {% endif %}
+        {% endif %}
+
+        {% if expiring_medicines %}
+            <div class="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start space-x-3 text-amber-800">
+                <i class="fa-solid fa-hourglass-half text-amber-600 text-xl mt-0.5 animate-pulse"></i>
+                <div class="space-y-1">
+                    <h4 class="font-bold text-sm">Safety Alert: Near-Expiry Stock Detected (within 30 days)!</h4>
+                    <ul class="text-xs list-disc list-inside space-y-0.5 opacity-90">
+                        {% for med in expiring_medicines %}
+                            <li><strong>{{ med.name }}</strong> (Manufacturer: {{ med.manufacturer }}) — Expires on <strong>{{ med.expiry_date }}</strong> (<strong>{{ med.days_to_expiry }} days</strong> remaining). Only {{ med.stock_quantity }} units remaining.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        {% endif %}
+    </div>
 
     <!-- Toggles / Tabs for Management Sections -->
     <div class="flex space-x-4 border-b border-slate-100 pb-px flex-wrap gap-y-2">
@@ -334,6 +350,96 @@
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Medicine Manual Stock Adjustment Console -->
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-screwdriver-wrench text-emerald-600"></i>
+                    <span>Manual Stock Adjustments & Damage Log</span>
+                </h3>
+            </div>
+
+            <div class="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Adjustment Form -->
+                <form id="adjust-stock-form" class="space-y-4 lg:col-span-1 border-r border-slate-100 pr-6">
+                    <h4 class="font-bold text-slate-700 text-xs uppercase tracking-wider">Record Adjustment</h4>
+                    
+                    <div id="adjust-alert" class="hidden p-3.5 rounded-xl text-xs border flex items-start space-x-1.5 bg-rose-50 border-rose-100 text-rose-800">
+                        <span id="adjust-alert-msg" class="font-medium"></span>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Select Medicine</label>
+                        <select id="adjust-med-id" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                            <option value="">Choose medicine...</option>
+                            {% for med in medicines %}
+                                <option value="{{ med.id }}">#{{ med.id }} - {{ med.name }} (Stock: {{ med.stock_quantity }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Reason for Removal</label>
+                        <select id="adjust-type" required class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                            <option value="expired_removal">Expired Stock Removal</option>
+                            <option value="damaged">Damaged Stock Disposal</option>
+                            <option value="correction">Inventory Discrepancy Correction</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Quantity to Remove</label>
+                        <input type="number" id="adjust-qty" min="1" required placeholder="Units removed" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs">
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Reason/Notes</label>
+                        <textarea id="adjust-reason" rows="2" placeholder="Explain the adjustment details..." class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 text-xs"></textarea>
+                    </div>
+
+                    <button type="submit" id="adjust-submit-btn" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 rounded-xl text-xs transition-colors">
+                        Record Adjustment
+                    </button>
+                </form>
+
+                <!-- History Table -->
+                <div class="lg:col-span-2 space-y-4">
+                    <h4 class="font-bold text-slate-700 text-xs uppercase tracking-wider">Adjustment Ledger Trail</h4>
+                    
+                    <div class="overflow-x-auto max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
+                        <table class="w-full text-left text-xs divide-y divide-slate-50">
+                            <thead class="bg-slate-50 text-slate-400 font-semibold uppercase">
+                                <tr>
+                                    <th class="px-4 py-2.5">Date</th>
+                                    <th class="px-4 py-2.5">Medicine</th>
+                                    <th class="px-4 py-2.5">Type</th>
+                                    <th class="px-4 py-2.5">Qty</th>
+                                    <th class="px-4 py-2.5">Operator</th>
+                                    <th class="px-4 py-2.5">Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
+                                {% for adj in stock_adjustments %}
+                                    <tr class="hover:bg-slate-50/50 transition-colors">
+                                        <td class="px-4 py-3 text-slate-400 text-[10px]">{{ adj.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                        <td class="px-4 py-3 font-bold">{{ adj.medicine_name }}</td>
+                                        <td class="px-4 py-3 capitalize font-mono text-[10px] text-rose-600">{{ adj.adjustment_type|replace('_', ' ') }}</td>
+                                        <td class="px-4 py-3 font-extrabold text-slate-900">-{{ adj.quantity_removed }}</td>
+                                        <td class="px-4 py-3">{{ adj.admin_name }}</td>
+                                        <td class="px-4 py-3 text-slate-400 italic">"{{ adj.reason or 'None' }}"</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="px-4 py-8 text-center text-slate-400 italic">No manual stock adjustments logged.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -871,6 +977,46 @@ document.getElementById('editmed-form').addEventListener('submit', async functio
         }
     } catch (err) {
         alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Network connection error.';
+        submitBtn.disabled = false;
+    }
+});
+
+// Submit Manual Stock Adjustment Form
+document.getElementById('adjust-stock-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const alertBox = document.getElementById('adjust-alert');
+    const alertMsg = document.getElementById('adjust-alert-msg');
+    const submitBtn = document.getElementById('adjust-submit-btn');
+
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+
+    const payload = {
+        medicine_id: parseInt(document.getElementById('adjust-med-id').value),
+        adjustment_type: document.getElementById('adjust-type').value,
+        quantity_removed: parseInt(document.getElementById('adjust-qty').value),
+        reason: document.getElementById('adjust-reason').value.trim()
+    };
+
+    try {
+        const response = await fetch('/admin/inventory/adjust', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            window.location.reload();
+        } else {
+            alertBox.className = 'p-3.5 rounded-xl text-xs border flex items-start space-x-1.5 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Error recording adjustment.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-3.5 rounded-xl text-xs border flex items-start space-x-1.5 bg-rose-50 text-rose-800 border-rose-100';
         alertMsg.innerText = 'Network connection error.';
         submitBtn.disabled = false;
     }

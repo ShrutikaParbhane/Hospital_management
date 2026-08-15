@@ -31,6 +31,9 @@
         <button onclick="switchTab('walkin-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
             Register Walk-in Patient
         </button>
+        <button onclick="switchTab('dispense-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
+            Pharmacy Dispense Console
+        </button>
         <button onclick="switchTab('billing-tab', this)" class="tab-btn border-b-2 border-transparent text-slate-400 font-semibold px-4 py-2.5 text-sm hover:text-slate-600 transition-all focus:outline-none">
             Collect Payments & Billings
         </button>
@@ -187,39 +190,149 @@
         </div>
     </div>
 
-    <!-- 3. Collect Payments Tab -->
-    <div id="billing-tab" class="tab-content hidden space-y-6">
+    <!-- 3. Pharmacy Dispense Tab -->
+    <div id="dispense-tab" class="tab-content hidden space-y-6">
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-prescription-bottle-medical text-emerald-600"></i>
+                    <span>Medication Dispensing Console</span>
+                </h3>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm divide-y divide-slate-50">
+                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Prescription Date</th>
+                            <th class="px-6 py-4">Patient</th>
+                            <th class="px-6 py-4">Doctor</th>
+                            <th class="px-6 py-4">Diagnosis</th>
+                            <th class="px-6 py-4">Undispensed Items</th>
+                            <th class="px-6 py-4 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
+                        {% for pr in prescriptions %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4 text-xs text-slate-400">{{ pr.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td class="px-6 py-4 font-bold">{{ pr.patient_name }}</td>
+                                <td class="px-6 py-4">{{ pr.doctor_name }}</td>
+                                <td class="px-6 py-4 text-slate-500 italic">"{{ pr.diagnosis[:40] }}{% if pr.diagnosis|length > 40 %}...{% endif %}"</td>
+                                <td class="px-6 py-4">
+                                    {% if pr.undispensed_count > 0 %}
+                                        <span class="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded text-xs font-bold">{{ pr.undispensed_count }} items pending</span>
+                                    {% else %}
+                                        <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded text-xs font-bold">Dispensed</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <button onclick="openDispenseModal({{ pr.prescription_id }}, '{{ pr.patient_name }}')" 
+                                            class="text-xs bg-emerald-600 text-white font-bold px-3.5 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
+                                        Dispense Medicines
+                                    </button>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="px-6 py-8 text-center text-slate-400 italic">No patient prescriptions found.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Collect Payments Tab -->
+    <div id="billing-tab" class="tab-content hidden space-y-8">
+        <!-- Consultation Bills -->
         <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
             <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
                 <h3 class="font-bold text-slate-800 flex items-center space-x-2">
                     <i class="fa-solid fa-file-invoice-dollar text-emerald-600"></i>
-                    <span>Consultation Ledger Invoices</span>
+                    <span>Doctor Consultation Bills</span>
                 </h3>
             </div>
 
-            <!-- Ledger Table -->
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm divide-y divide-slate-50">
                     <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
                         <tr>
                             <th class="px-6 py-4">Billed At</th>
-                            <th class="px-6 py-4">Patient</th>
-                            <th class="px-6 py-4">Doctor</th>
-                            <th class="px-6 py-4">Consultation</th>
-                            <th class="px-6 py-4">Medicines</th>
-                            <th class="px-6 py-4">Total Amount</th>
-                            <th class="px-6 py-4">Status</th>
+                            <th class="px-6 py-4">Patient Name</th>
+                            <th class="px-6 py-4">Doctor Consultation</th>
+                            <th class="px-6 py-4">Fee Amount</th>
+                            <th class="px-6 py-4">Payment Status</th>
                             <th class="px-6 py-4">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
-                        {% for bill in bills %}
+                        {% for bill in consultation_bills %}
                             <tr class="hover:bg-slate-50/50 transition-colors">
                                 <td class="px-6 py-4.5 text-xs text-slate-400">{{ bill.billed_at.strftime('%Y-%m-%d %H:%M') }}</td>
                                 <td class="px-6 py-4.5 font-bold">{{ bill.patient_name }}</td>
-                                <td class="px-6 py-4.5">{{ bill.doctor_name }}</td>
-                                <td class="px-6 py-4.5">${{ bill.consultation_fee }}</td>
-                                <td class="px-6 py-4.5 text-teal-600">${{ bill.medicine_charges }}</td>
+                                <td class="px-6 py-4.5">Consultation with {{ bill.doctor_name }}</td>
+                                <td class="px-6 py-4.5 text-slate-900 font-extrabold">${{ bill.consultation_fee }}</td>
+                                <td class="px-6 py-4.5">
+                                    {% if bill.payment_status == 'paid' %}
+                                        <span class="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-semibold capitalize">
+                                            paid via {{ bill.payment_method }}
+                                        </span>
+                                    {% else %}
+                                        <span class="px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-full text-xs font-semibold">
+                                            pending
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4.5">
+                                    {% if bill.payment_status == 'pending' %}
+                                        <button onclick="recordCashPayment({{ bill.id }}, 'consultation')" 
+                                                class="text-xs bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
+                                            Settle cash
+                                        </button>
+                                    {% else %}
+                                        <span class="text-xs text-slate-400 italic">Completed</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="px-6 py-8 text-center text-slate-400 italic">No consultation records found.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pharmacy Bills -->
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-prescription-bottle-medical text-emerald-600"></i>
+                    <span>Pharmacy Medication Bills</span>
+                </h3>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm divide-y divide-slate-50">
+                    <thead class="bg-slate-50 text-slate-400 font-semibold text-xs uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Billed At</th>
+                            <th class="px-6 py-4">Patient Name</th>
+                            <th class="px-6 py-4">Prescribing Doctor</th>
+                            <th class="px-6 py-4">Pharmacy Total</th>
+                            <th class="px-6 py-4">Payment Status</th>
+                            <th class="px-6 py-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 font-medium text-slate-700">
+                        {% for bill in pharmacy_bills %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4.5 text-xs text-slate-400">{{ bill.billed_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td class="px-6 py-4.5 font-bold">{{ bill.patient_name }}</td>
+                                <td class="px-6 py-4.5">Prescribed by {{ bill.doctor_name }}</td>
                                 <td class="px-6 py-4.5 text-slate-900 font-extrabold">${{ bill.total_amount }}</td>
                                 <td class="px-6 py-4.5">
                                     {% if bill.payment_status == 'paid' %}
@@ -234,7 +347,7 @@
                                 </td>
                                 <td class="px-6 py-4.5">
                                     {% if bill.payment_status == 'pending' %}
-                                        <button onclick="recordCashPayment({{ bill.id }})" 
+                                        <button onclick="recordCashPayment({{ bill.id }}, 'pharmacy')" 
                                                 class="text-xs bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
                                             Settle cash
                                         </button>
@@ -245,12 +358,56 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="8" class="px-6 py-8 text-center text-slate-400 italic">No ledger records found.</td>
+                                <td colspan="6" class="px-6 py-8 text-center text-slate-400 italic">No pharmacy bills generated.</td>
                             </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Dispensing Modal -->
+<div id="dispense-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-100 rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-6">
+        <div class="flex justify-between items-center border-b border-slate-50 pb-4">
+            <div>
+                <h3 class="text-lg font-bold text-slate-800">Pharmacy Dispensing Console</h3>
+                <p class="text-xs text-slate-400">Patient: <strong id="dispense-patient-name" class="text-emerald-700"></strong></p>
+            </div>
+            <button onclick="closeDispenseModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div id="dispense-alert" class="hidden p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 border-rose-100 text-rose-800">
+            <span id="dispense-alert-msg" class="font-medium"></span>
+        </div>
+
+        <div class="space-y-4">
+            <form id="dispense-form" class="space-y-4">
+                <input type="hidden" id="dispense-prescription-id">
+                
+                <div class="border border-slate-100 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+                    <table class="w-full text-left text-sm divide-y divide-slate-50">
+                        <thead class="bg-slate-50 text-slate-400 text-xs font-bold uppercase">
+                            <tr>
+                                <th class="px-4 py-2 text-center w-12"><input type="checkbox" id="select-all-dispense" onclick="toggleAllDispense(this)"></th>
+                                <th class="px-4 py-2">Medicine</th>
+                                <th class="px-4 py-2">Quantity</th>
+                                <th class="px-4 py-2 text-right">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dispense-items-tbody" class="divide-y divide-slate-50 font-medium text-slate-700 text-xs">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="flex space-x-3 pt-2">
+                    <button type="button" onclick="closeDispenseModal()" class="w-1/2 border border-slate-200 font-bold py-2.5 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors">Cancel</button>
+                    <button type="submit" id="dispense-submit-btn" class="w-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-2.5 rounded-xl hover:shadow-lg transition-all">Dispense & Bill</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -294,10 +451,10 @@ async function confirmAppointment(appointmentId) {
 }
 
 // Record Cash Payment directly from Receptionist Ledger List
-async function recordCashPayment(billId) {
-    if (!confirm("Are you sure you want to mark this bill as paid via cash?")) return;
+async function recordCashPayment(billId, billType) {
+    if (!confirm(`Are you sure you want to mark this ${billType} bill as paid via cash?`)) return;
     try {
-        const response = await fetch(`/receptionist/bill/pay/${billId}`, {
+        const response = await fetch(`/receptionist/bill/pay/${billType}/${billId}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ payment_method: 'cash' })
@@ -314,6 +471,116 @@ async function recordCashPayment(billId) {
         alert('Network connection error.');
     }
 }
+
+// Open and Close Dispensing Console
+async function openDispenseModal(prescriptionId, patientName) {
+    const modal = document.getElementById('dispense-modal');
+    const tbody = document.getElementById('dispense-items-tbody');
+    const alertBox = document.getElementById('dispense-alert');
+    const nameDisplay = document.getElementById('dispense-patient-name');
+    
+    nameDisplay.innerText = patientName;
+    document.getElementById('dispense-prescription-id').value = prescriptionId;
+    alertBox.className = 'hidden';
+    tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner animate-spin mr-1"></i> Loading prescription items...</td></tr>';
+    document.getElementById('select-all-dispense').checked = false;
+    modal.classList.remove('hidden');
+    
+    try {
+        const response = await fetch(`/receptionist/prescription/${prescriptionId}/items`);
+        const result = await response.json();
+        if (result.success) {
+            let html = '';
+            result.items.forEach(item => {
+                const expiredLabel = item.is_expired ? ' <span class="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-extrabold font-mono uppercase">Expired</span>' : '';
+                const disabled = (item.dispensed || item.is_expired || item.stock_quantity < item.duration_days) ? 'disabled' : '';
+                const titleText = item.is_expired ? 'Cannot dispense expired medicine' : (item.stock_quantity < item.duration_days ? 'Insufficient stock' : '');
+                
+                let checkInput = '';
+                if (item.dispensed) {
+                    checkInput = '<i class="fa-solid fa-circle-check text-emerald-600"></i>';
+                } else if (item.is_expired || item.stock_quantity < item.duration_days) {
+                    checkInput = '<i class="fa-solid fa-circle-xmark text-rose-600" title="' + titleText + '"></i>';
+                } else {
+                    checkInput = `<input type="checkbox" name="item_ids" value="${item.id}" class="dispense-item-chk rounded text-emerald-600 focus:ring-emerald-500">`;
+                }
+                
+                html += `
+                    <tr class="hover:bg-slate-50/50 transition-colors ${item.dispensed ? 'opacity-50' : ''}">
+                        <td class="px-4 py-3 text-center">${checkInput}</td>
+                        <td class="px-4 py-3">
+                            <div class="font-bold text-slate-800">${item.medicine_name}${expiredLabel}</div>
+                            <div class="text-[10px] text-slate-400">Exp: ${item.expiry_date}</div>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="block">${item.dosage} | ${item.frequency}</span>
+                            <span class="text-[10px] text-slate-400">${item.duration_days} Days / Stock: ${item.stock_quantity}</span>
+                        </td>
+                        <td class="px-4 py-3 text-right text-emerald-600 font-bold">$${(item.unit_price * item.duration_days).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        } else {
+            tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-rose-600 font-semibold">${result.message}</td></tr>`;
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-rose-600 font-semibold">Error loading items from server.</td></tr>';
+    }
+}
+function closeDispenseModal() {
+    document.getElementById('dispense-modal').classList.add('hidden');
+}
+
+// Master toggle check/uncheck
+function toggleAllDispense(master) {
+    document.querySelectorAll('.dispense-item-chk').forEach(chk => {
+        if (!chk.disabled) chk.checked = master.checked;
+    });
+}
+
+// Submit Dispense & Bill
+document.getElementById('dispense-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const alertBox = document.getElementById('dispense-alert');
+    const alertMsg = document.getElementById('dispense-alert-msg');
+    const submitBtn = document.getElementById('dispense-submit-btn');
+    const prescriptionId = document.getElementById('dispense-prescription-id').value;
+    
+    const checkboxes = document.querySelectorAll('.dispense-item-chk:checked');
+    if (checkboxes.length === 0) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Please select at least one medication to dispense.';
+        return;
+    }
+    
+    const itemIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    alertBox.className = 'hidden';
+    submitBtn.disabled = true;
+    
+    try {
+        const response = await fetch(`/receptionist/dispense/${prescriptionId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ item_ids: itemIds })
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            window.location.reload();
+        } else {
+            alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+            alertMsg.innerText = result.message || 'Dispensing failed.';
+            submitBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.className = 'p-4 rounded-xl text-sm border flex items-start space-x-2 bg-rose-50 text-rose-800 border-rose-100';
+        alertMsg.innerText = 'Network error processing dispense transaction.';
+        submitBtn.disabled = false;
+    }
+});
 
 // Submit Walk-in Registration form
 document.getElementById('walkin-form').addEventListener('submit', async function(e) {

@@ -31,7 +31,7 @@ def log_audit_action(admin_id, action, target_type, target_id):
 @receptionist_bp.route('/dashboard')
 @login_required(roles=['receptionist'])
 def dashboard():
-    """Render Receptionist Dashboard containing billing lists, walk-in register, pending confirmations"""
+    """Render Receptionist Dashboard containing billing lists, walk-in register, pending confirmations, and dispensing console"""
     receptionist_id = session.get('receptionist_id')
     conn = get_db_connection()
     if not conn:
@@ -62,18 +62,46 @@ def dashboard():
         """)
         pending_appointments = cursor.fetchall()
 
-        # 2. Fetch all bills
+        # 2a. Fetch Consultation Bills
         cursor.execute("""
-            SELECT b.id, pu.name as patient_name, du.name as doctor_name, a.appointment_date, b.consultation_fee, b.medicine_charges, b.total_amount, b.payment_status, b.payment_method, b.billed_at
-            FROM billing b
-            JOIN appointments a ON b.appointment_id = a.id
+            SELECT cb.id, pu.name as patient_name, du.name as doctor_name, a.appointment_date, cb.consultation_fee, cb.payment_status, cb.payment_method, cb.billed_at
+            FROM consultation_bills cb
+            JOIN appointments a ON cb.appointment_id = a.id
             JOIN patients p ON a.patient_id = p.id
             JOIN users pu ON p.user_id = pu.id
             JOIN doctors d ON a.doctor_id = d.id
             JOIN users du ON d.user_id = du.id
-            ORDER BY b.billed_at DESC
+            ORDER BY cb.billed_at DESC
         """)
-        bills = cursor.fetchall()
+        consultation_bills = cursor.fetchall()
+
+        # 2b. Fetch Pharmacy Bills
+        cursor.execute("""
+            SELECT pb.id, pu.name as patient_name, du.name as doctor_name, pb.total_amount, pb.payment_status, pb.payment_method, pb.billed_at
+            FROM pharmacy_bills pb
+            JOIN prescriptions pr ON pb.prescription_id = pr.id
+            JOIN appointments a ON pr.appointment_id = a.id
+            JOIN patients p ON a.patient_id = p.id
+            JOIN users pu ON p.user_id = pu.id
+            JOIN doctors d ON a.doctor_id = d.id
+            JOIN users du ON d.user_id = du.id
+            ORDER BY pb.billed_at DESC
+        """)
+        pharmacy_bills = cursor.fetchall()
+
+        # 2c. Fetch Prescriptions for dispensing
+        cursor.execute("""
+            SELECT pr.id as prescription_id, pr.appointment_id, pu.name as patient_name, du.name as doctor_name, pr.diagnosis, pr.created_at,
+                   (SELECT COUNT(*) FROM prescription_items WHERE prescription_id = pr.id AND dispensed = FALSE) as undispensed_count
+            FROM prescriptions pr
+            JOIN appointments a ON pr.appointment_id = a.id
+            JOIN patients p ON pr.patient_id = p.id
+            JOIN users pu ON p.user_id = pu.id
+            JOIN doctors d ON pr.doctor_id = d.id
+            JOIN users du ON d.user_id = du.id
+            ORDER BY pr.created_at DESC
+        """)
+        prescriptions = cursor.fetchall()
 
         # 3. Fetch active doctors list for walk-in appointment scheduling
         cursor.execute("""
@@ -96,7 +124,9 @@ def dashboard():
             'receptionist_dashboard.html',
             receptionist=receptionist_info,
             pending=pending_appointments,
-            bills=bills,
+            consultation_bills=consultation_bills,
+            pharmacy_bills=pharmacy_bills,
+            prescriptions=prescriptions,
             doctors=doctors
         )
     except Exception as e:
@@ -144,10 +174,10 @@ def confirm_appointment(appointment_id):
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
 
-@receptionist_bp.route('/bill/pay/<int:bill_id>', methods=['POST'])
+@receptionist_bp.route('/bill/pay/<string:bill_type>/<int:bill_id>', methods=['POST'])
 @login_required(roles=['receptionist'])
-def record_payment(bill_id):
-    """Mark a pending bill as paid (e.g. receptionist records cash/card layout)"""
+def record_payment(bill_type, bill_id):
+    """Mark a pending bill as paid (consultation or pharmacy)"""
     receptionist_user_id = session.get('user_id')
     data = request.get_json() or {}
     payment_method = data.get('payment_method', 'cash')
@@ -155,37 +185,176 @@ def record_payment(bill_id):
     if payment_method not in ['cash', 'card', 'online']:
         return jsonify({'success': False, 'message': 'Invalid payment method.'}), 400
 
+    if bill_type not in ['consultation', 'pharmacy']:
+        return jsonify({'success': False, 'message': 'Invalid bill type.'}), 400
+
     conn = get_db_connection()
     if not conn:
         return jsonify({'success': False, 'message': 'Database connection error.'}), 500
 
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT payment_status FROM billing WHERE id = %s", (bill_id,))
-        bill = cursor.fetchone()
-        
-        if not bill:
-            cursor.close()
-            conn.close()
-            return jsonify({'success': False, 'message': 'Invoice bill not found.'}), 404
+        if bill_type == 'consultation':
+            cursor.execute("SELECT payment_status FROM consultation_bills WHERE id = %s", (bill_id,))
+            bill = cursor.fetchone()
+            if not bill:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'message': 'Consultation bill not found.'}), 404
+            if bill['payment_status'] == 'paid':
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'message': 'Bill is already paid.'}), 400
+                
+            cursor.execute("""
+                UPDATE consultation_bills
+                SET payment_status = 'paid', payment_method = %s
+                WHERE id = %s
+            """, (payment_method, bill_id))
+        else:
+            cursor.execute("SELECT payment_status FROM pharmacy_bills WHERE id = %s", (bill_id,))
+            bill = cursor.fetchone()
+            if not bill:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'message': 'Pharmacy bill not found.'}), 404
+            if bill['payment_status'] == 'paid':
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'message': 'Bill is already paid.'}), 400
+                
+            cursor.execute("""
+                UPDATE pharmacy_bills
+                SET payment_status = 'paid', payment_method = %s
+                WHERE id = %s
+            """, (payment_method, bill_id))
             
-        if bill['payment_status'] == 'paid':
-            cursor.close()
-            conn.close()
-            return jsonify({'success': False, 'message': 'Invoice is already paid.'}), 400
-
-        cursor.execute("""
-            UPDATE billing
-            SET payment_status = 'paid', payment_method = %s
-            WHERE id = %s
-        """, (payment_method, bill_id))
-        
         conn.commit()
         cursor.close()
         conn.close()
 
-        log_audit_action(receptionist_user_id, "Settled payment invoice", "billing", bill_id)
+        log_audit_action(receptionist_user_id, f"Settled payment invoice ({bill_type})", "billing", bill_id)
         return jsonify({'success': True, 'message': 'Invoice marked as paid successfully!'})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@receptionist_bp.route('/prescription/<int:prescription_id>/items')
+@login_required(roles=['receptionist'])
+def get_prescription_items(prescription_id):
+    """Fetch items for dispensing console"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT pi.id, m.name as medicine_name, pi.dosage, pi.frequency, pi.duration_days, 
+                   m.unit_price, m.stock_quantity, pi.dispensed, m.expiry_date
+            FROM prescription_items pi
+            JOIN medicines m ON pi.medicine_id = m.id
+            WHERE pi.prescription_id = %s
+        """, (prescription_id,))
+        items = cursor.fetchall()
+        
+        # Check if medicine is expired
+        import datetime
+        today = datetime.date.today()
+        for item in items:
+            item['is_expired'] = (item['expiry_date'] < today)
+            item['expiry_date'] = str(item['expiry_date'])
+            
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'items': items})
+    except Exception as e:
+        if conn:
+            conn.close()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@receptionist_bp.route('/dispense/<int:prescription_id>', methods=['POST'])
+@login_required(roles=['receptionist'])
+def dispense_prescription(prescription_id):
+    """Dispense selected prescription items, create pharmacy bill, deduct inventory"""
+    receptionist_user_id = session.get('user_id')
+    data = request.get_json() or {}
+    item_ids = data.get('item_ids', [])
+    
+    if not item_ids:
+        return jsonify({'success': False, 'message': 'No items selected for dispensing.'}), 400
+        
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+        
+    try:
+        conn.start_transaction()
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. Fetch prescription information
+        cursor.execute("SELECT patient_id FROM prescriptions WHERE id = %s", (prescription_id,))
+        prescription = cursor.fetchone()
+        if not prescription:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Prescription not found.'}), 404
+            
+        patient_id = prescription['patient_id']
+        
+        # 2. Get or create pharmacy bill
+        cursor.execute("SELECT id FROM pharmacy_bills WHERE prescription_id = %s", (prescription_id,))
+        bill = cursor.fetchone()
+        
+        if bill:
+            pharmacy_bill_id = bill['id']
+        else:
+            cursor.execute("""
+                INSERT INTO pharmacy_bills (prescription_id, patient_id, total_amount, payment_status)
+                VALUES (%s, %s, 0.00, 'pending')
+            """, (prescription_id, patient_id))
+            pharmacy_bill_id = cursor.lastrowid
+            
+        # 3. Dispense selected items
+        for item_id in item_ids:
+            cursor.execute("""
+                SELECT pi.id, pi.medicine_id, pi.duration_days as quantity, m.unit_price, pi.dispensed
+                FROM prescription_items pi
+                JOIN medicines m ON pi.medicine_id = m.id
+                WHERE pi.id = %s AND pi.prescription_id = %s
+            """, (item_id, prescription_id))
+            item = cursor.fetchone()
+            
+            if not item:
+                raise Exception(f"Invalid prescription item ID: {item_id}.")
+            if item['dispensed']:
+                raise Exception("Item has already been dispensed.")
+                
+            # Insert into pharmacy_bill_items (triggers decrement_stock_on_dispense and check_pharmacy_stock_before_dispense)
+            cursor.execute("""
+                INSERT INTO pharmacy_bill_items (pharmacy_bill_id, prescription_item_id, quantity, unit_price)
+                VALUES (%s, %s, %s, %s)
+            """, (pharmacy_bill_id, item['id'], item['quantity'], item['unit_price']))
+            
+            # Update prescription_items status to dispensed
+            cursor.execute("UPDATE prescription_items SET dispensed = TRUE WHERE id = %s", (item_id,))
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        log_audit_action(receptionist_user_id, "Dispensed prescription items", "prescription", prescription_id)
+        return jsonify({'success': True, 'message': 'Medicines dispensed and billed successfully!'})
+    except mysql.connector.Error as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        if e.sqlstate == '45000':
+            return jsonify({'success': False, 'message': f"Safety Error: {e.msg}"}), 400
+        return jsonify({'success': False, 'message': f"Database error: {e.msg}"}), 500
     except Exception as e:
         if conn:
             conn.rollback()

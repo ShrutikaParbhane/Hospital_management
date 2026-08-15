@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS medicines (
 );
 
 -- =======================================================
--- 8. PRESCRIPTION ITEMS TABLE (Junction Table)
+-- 8. PRESCRIPTION ITEMS TABLE
 -- =======================================================
 CREATE TABLE IF NOT EXISTS prescription_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -126,20 +126,19 @@ CREATE TABLE IF NOT EXISTS prescription_items (
     dosage VARCHAR(50) NOT NULL, -- e.g., '500mg'
     frequency VARCHAR(50) NOT NULL, -- e.g., 'twice daily'
     duration_days INT NOT NULL,
+    dispensed BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE,
     FOREIGN KEY (medicine_id) REFERENCES medicines(id) ON DELETE CASCADE
 );
 
 -- =======================================================
--- 9. BILLING TABLE
+-- 9. CONSULTATION BILLING TABLE
 -- =======================================================
-CREATE TABLE IF NOT EXISTS billing (
+CREATE TABLE IF NOT EXISTS consultation_bills (
     id INT PRIMARY KEY AUTO_INCREMENT,
     appointment_id INT UNIQUE NOT NULL,
     patient_id INT NOT NULL,
     consultation_fee DECIMAL(10,2) NOT NULL,
-    medicine_charges DECIMAL(10,2) DEFAULT 0.00,
-    total_amount DECIMAL(10,2) NOT NULL,
     payment_status ENUM('pending', 'paid', 'failed') DEFAULT 'pending',
     payment_method ENUM('cash', 'card', 'online') NULL,
     billed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -149,7 +148,37 @@ CREATE TABLE IF NOT EXISTS billing (
 );
 
 -- =======================================================
--- 10. MEDICINE REQUESTS TABLE
+-- 10. PHARMACY BILLING TABLE
+-- =======================================================
+CREATE TABLE IF NOT EXISTS pharmacy_bills (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    prescription_id INT UNIQUE NOT NULL,
+    patient_id INT NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    payment_status ENUM('pending', 'paid', 'failed') DEFAULT 'pending',
+    payment_method ENUM('cash', 'card', 'online') NULL,
+    billed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE,
+    FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
+);
+
+-- =======================================================
+-- 11. PHARMACY BILL ITEMS TABLE
+-- =======================================================
+CREATE TABLE IF NOT EXISTS pharmacy_bill_items (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    pharmacy_bill_id INT NOT NULL,
+    prescription_item_id INT NOT NULL,
+    quantity INT NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+    subtotal DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+    FOREIGN KEY (pharmacy_bill_id) REFERENCES pharmacy_bills(id) ON DELETE CASCADE,
+    FOREIGN KEY (prescription_item_id) REFERENCES prescription_items(id) ON DELETE CASCADE
+);
+
+-- =======================================================
+-- 12. MEDICINE REQUESTS TABLE
 -- =======================================================
 CREATE TABLE IF NOT EXISTS medicine_requests (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -171,7 +200,22 @@ CREATE TABLE IF NOT EXISTS medicine_requests (
 );
 
 -- =======================================================
--- 11. AUDIT LOGS TABLE
+-- 13. STOCK ADJUSTMENTS LOG TABLE
+-- =======================================================
+CREATE TABLE IF NOT EXISTS stock_adjustments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    medicine_id INT NOT NULL,
+    admin_id INT NOT NULL,
+    adjustment_type ENUM('expired_removal', 'damaged', 'correction') NOT NULL,
+    quantity_removed INT NOT NULL,
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (medicine_id) REFERENCES medicines(id) ON DELETE CASCADE,
+    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- =======================================================
+-- 14. AUDIT LOGS TABLE
 -- =======================================================
 CREATE TABLE IF NOT EXISTS audit_logs (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -182,6 +226,18 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- =======================================================
+-- VIEWS
+-- =======================================================
+
+-- 1. Expiring Medicines view
+CREATE VIEW expiring_medicines_alert AS
+SELECT id, name, category, manufacturer, stock_quantity, expiry_date,
+       DATEDIFF(expiry_date, CURDATE()) AS days_to_expiry
+FROM medicines
+WHERE expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+  AND stock_quantity > 0;
 
 -- =======================================================
 -- TRIGGERS & EVENTS
@@ -304,8 +360,8 @@ BEGIN
     END IF;
 END$$
 
--- 5. Auto-Billing Generation
-CREATE TRIGGER generate_billing_on_completion
+-- 5. Auto-Billing Consultation fee on completion
+CREATE TRIGGER generate_consultation_bill_on_completion
 AFTER UPDATE ON appointments
 FOR EACH ROW
 BEGIN
@@ -316,63 +372,78 @@ BEGIN
         FROM doctors
         WHERE id = NEW.doctor_id;
         
-        INSERT INTO billing (appointment_id, patient_id, consultation_fee, medicine_charges, total_amount, payment_status)
-        VALUES (NEW.id, NEW.patient_id, doc_fee, 0.00, doc_fee, 'pending')
+        INSERT INTO consultation_bills (appointment_id, patient_id, consultation_fee, payment_status)
+        VALUES (NEW.id, NEW.patient_id, doc_fee, 'pending')
         ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP;
     END IF;
 END$$
 
--- 6. Stock Control: Check Quantity before inserting item
-CREATE TRIGGER check_medicine_stock
+-- 6. Safety Control: Block prescribing expired medicines
+CREATE TRIGGER before_prescribe_check_expiry
 BEFORE INSERT ON prescription_items
 FOR EACH ROW
 BEGIN
-    DECLARE current_stock INT;
+    DECLARE exp_date DATE;
     
-    SELECT stock_quantity INTO current_stock
-    FROM medicines
+    SELECT expiry_date INTO exp_date 
+    FROM medicines 
     WHERE id = NEW.medicine_id;
     
-    IF current_stock < NEW.duration_days THEN
+    IF exp_date < CURDATE() THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Insufficient stock quantity for the prescribed medicine.';
+        SET MESSAGE_TEXT = 'Safety Lockout: Cannot prescribe an expired medicine.';
     END IF;
 END$$
 
--- 7. Stock Control: Decrement stock and update bill after insert
-CREATE TRIGGER decrement_stock_and_bill
-AFTER INSERT ON prescription_items
+-- 7. Dispense Stock Control: Check stock quantity before pharmacy item dispense
+CREATE TRIGGER check_pharmacy_stock_before_dispense
+BEFORE INSERT ON pharmacy_bill_items
 FOR EACH ROW
 BEGIN
-    DECLARE med_price DECIMAL(10,2);
+    DECLARE current_stock INT;
+    DECLARE med_id INT;
+    
+    SELECT medicine_id INTO med_id
+    FROM prescription_items
+    WHERE id = NEW.prescription_item_id;
+    
+    SELECT stock_quantity INTO current_stock
+    FROM medicines
+    WHERE id = med_id;
+    
+    IF current_stock < NEW.quantity THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Safety Refusal: Insufficient stock quantity for the dispensed medicine.';
+    END IF;
+END$$
+
+-- 8. Dispense Stock Control: Decrement stock and update pharmacy bill amount
+CREATE TRIGGER decrement_stock_on_dispense
+AFTER INSERT ON pharmacy_bill_items
+FOR EACH ROW
+BEGIN
+    DECLARE med_id INT;
     DECLARE item_cost DECIMAL(10,2);
-    DECLARE app_id INT;
+    
+    -- Get medicine ID from prescription_items
+    SELECT medicine_id INTO med_id
+    FROM prescription_items
+    WHERE id = NEW.prescription_item_id;
     
     -- Decrement stock quantity
     UPDATE medicines
-    SET stock_quantity = stock_quantity - NEW.duration_days
-    WHERE id = NEW.medicine_id;
+    SET stock_quantity = stock_quantity - NEW.quantity
+    WHERE id = med_id;
     
-    -- Get price
-    SELECT unit_price INTO med_price
-    FROM medicines
-    WHERE id = NEW.medicine_id;
+    SET item_cost = NEW.unit_price * NEW.quantity;
     
-    SET item_cost = med_price * NEW.duration_days;
-    
-    -- Get appointment ID from prescription
-    SELECT appointment_id INTO app_id
-    FROM prescriptions
-    WHERE id = NEW.prescription_id;
-    
-    -- Update bill
-    UPDATE billing
-    SET medicine_charges = medicine_charges + item_cost,
-        total_amount = total_amount + item_cost
-    WHERE appointment_id = app_id;
+    -- Update pharmacy_bills amount
+    UPDATE pharmacy_bills
+    SET total_amount = total_amount + item_cost
+    WHERE id = NEW.pharmacy_bill_id;
 END$$
 
--- 8. Trigger to auto-restock a medicine after request approval
+-- 9. Trigger to auto-restock a medicine after request approval
 CREATE TRIGGER after_restock_approved
 AFTER UPDATE ON medicine_requests
 FOR EACH ROW
@@ -385,7 +456,7 @@ BEGIN
     END IF;
 END$$
 
--- 9. Trigger to auto-create a new medicine row after request approval
+-- 10. Trigger to auto-create a new medicine row after request approval
 CREATE TRIGGER after_new_medicine_approved
 AFTER UPDATE ON medicine_requests
 FOR EACH ROW
@@ -396,6 +467,16 @@ BEGIN
         INSERT INTO medicines (name, category, manufacturer, unit_price, stock_quantity, reorder_level, expiry_date)
         VALUES (NEW.medicine_name, NEW.category, NEW.manufacturer, 0.00, NEW.quantity_requested, 10, DATE_ADD(CURDATE(), INTERVAL 1 YEAR));
     END IF;
+END$$
+
+-- 11. Trigger to deduct stock on manual adjustments
+CREATE TRIGGER after_stock_adjustment_deduct
+AFTER INSERT ON stock_adjustments
+FOR EACH ROW
+BEGIN
+    UPDATE medicines
+    SET stock_quantity = GREATEST(0, stock_quantity - NEW.quantity_removed)
+    WHERE id = NEW.medicine_id;
 END$$
 
 DELIMITER ;
@@ -476,11 +557,14 @@ INSERT INTO patients (user_id, dob, gender, blood_group, address, emergency_cont
 (@patient_user_2, '1988-11-23', 'male', 'O-', '456 Elm St, Townsville', '9123456789');
 
 
--- 5. Insert Medicines (Amoxicillin set below reorder level to trigger low-stock alert)
+-- 5. Insert Medicines
+-- Includes normal, low stock, expired (for testing triggers), and near-expiry medicines
 INSERT INTO medicines (name, manufacturer, category, unit_price, stock_quantity, reorder_level, expiry_date) VALUES
 ('Amoxicillin 500mg', 'Pfizer', 'Antibiotic', 1.50, 5, 10, '2028-12-31'),
 ('Ibuprofen 400mg', 'Bayer', 'Analgesic', 0.80, 200, 10, '2027-06-30'),
 ('Paracetamol 650mg', 'GSK', 'Antipyretic', 0.50, 500, 15, '2029-01-15'),
 ('Metformin 1000mg', 'Merck', 'Antidiabetic', 1.20, 150, 10, '2028-09-20'),
 ('Atorvastatin 20mg', 'Viatris', 'Statin', 2.00, 120, 10, '2027-11-10'),
-('Cetirizine 10mg', 'McNeil', 'Antihistamine', 0.60, 250, 10, '2028-03-05');
+('Cetirizine 10mg', 'McNeil', 'Antihistamine', 0.60, 250, 10, '2028-03-05'),
+('Aspirin 500mg', 'Bayer', 'Analgesic', 0.75, 100, 10, '2025-01-01'), -- Expired medicine (safety lockout testing)
+('Vitamin C 500mg', 'GSK', 'Vitamin', 0.50, 80, 10, DATE_ADD(CURDATE(), INTERVAL 15 DAY)); -- Near Expiry (15 days remaining)

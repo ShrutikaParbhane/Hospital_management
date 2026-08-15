@@ -28,7 +28,11 @@ def dashboard():
         cursor.execute("SELECT COUNT(*) as count FROM appointments")
         appointments_count = cursor.fetchone()['count']
 
-        cursor.execute("SELECT IFNULL(SUM(total_amount), 0.00) as sum FROM billing WHERE payment_status = 'paid'")
+        cursor.execute("""
+            SELECT 
+                (SELECT IFNULL(SUM(consultation_fee), 0.00) FROM consultation_bills WHERE payment_status = 'paid') + 
+                (SELECT IFNULL(SUM(total_amount), 0.00) FROM pharmacy_bills WHERE payment_status = 'paid') as sum
+        """)
         total_revenue = cursor.fetchone()['sum']
 
         # 2. Fetch doctor lists
@@ -83,6 +87,21 @@ def dashboard():
         cursor.execute("SELECT id, name, category, manufacturer, unit_price, stock_quantity, reorder_level, expiry_date FROM medicines ORDER BY name")
         all_medicines = cursor.fetchall()
 
+        # 8. Fetch expiring medicines alerts (View)
+        cursor.execute("SELECT id, name, category, manufacturer, stock_quantity, expiry_date, days_to_expiry FROM expiring_medicines_alert ORDER BY days_to_expiry ASC")
+        expiring_medicines = cursor.fetchall()
+
+        # 9. Fetch stock adjustments history
+        cursor.execute("""
+            SELECT sa.id, sa.adjustment_type, sa.quantity_removed, sa.reason, sa.created_at, m.name as medicine_name, u.name as admin_name
+            FROM stock_adjustments sa
+            JOIN medicines m ON sa.medicine_id = m.id
+            JOIN users u ON sa.admin_id = u.id
+            ORDER BY sa.created_at DESC
+            LIMIT 20
+        """)
+        stock_adjustments = cursor.fetchall()
+
         # Format times
         for d in doctors:
             d['slot_start_time'] = str(d['slot_start_time'])[:5]
@@ -102,6 +121,8 @@ def dashboard():
             doctors=doctors,
             receptionists=receptionists,
             low_stock=low_stock,
+            expiring_medicines=expiring_medicines,
+            stock_adjustments=stock_adjustments,
             requests=requests,
             medicines=all_medicines,
             logs=audit_logs
@@ -377,5 +398,75 @@ def edit_medicine_price(med_id):
         return jsonify({'success': True, 'message': 'Medicine details updated successfully!'})
     except Exception as e:
         if conn:
+            conn.close()
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@admin_bp.route('/inventory/adjust', methods=['POST'])
+@login_required(roles=['admin'])
+def adjust_inventory():
+    """Manual adjustment / removal of expired or damaged stock by administrator"""
+    admin_user_id = session.get('user_id')
+    data = request.form if request.form else request.get_json()
+    
+    medicine_id = data.get('medicine_id')
+    adjustment_type = data.get('adjustment_type')
+    quantity_removed = data.get('quantity_removed')
+    reason = data.get('reason', '').strip()
+
+    if not all([medicine_id, adjustment_type, quantity_removed]):
+        return jsonify({'success': False, 'message': 'Missing required fields.'}), 400
+
+    try:
+        medicine_id = int(medicine_id)
+        quantity_removed = int(quantity_removed)
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Invalid numeric inputs.'}), 400
+
+    if quantity_removed <= 0:
+        return jsonify({'success': False, 'message': 'Quantity must be greater than zero.'}), 400
+
+    if adjustment_type not in ['expired_removal', 'damaged', 'correction']:
+        return jsonify({'success': False, 'message': 'Invalid adjustment type.'}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # Verify current stock level to prevent adjusting more than available
+        cursor.execute("SELECT stock_quantity, name FROM medicines WHERE id = %s", (medicine_id,))
+        med = cursor.fetchone()
+        if not med:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Medicine not found.'}), 404
+            
+        if med['stock_quantity'] < quantity_removed:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False, 
+                'message': f"Cannot adjust/remove {quantity_removed} units. Current catalog stock of '{med['name']}' is only {med['stock_quantity']} units."
+            }), 400
+
+        # Log adjustment (this runs after_stock_adjustment_deduct trigger to update inventory)
+        cursor.execute("""
+            INSERT INTO stock_adjustments (medicine_id, admin_id, adjustment_type, quantity_removed, reason)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (medicine_id, admin_user_id, adjustment_type, quantity_removed, reason))
+        adjustment_id = cursor.lastrowid
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        log_audit_action(admin_user_id, f"Recorded manual stock adjustment (removed {quantity_removed} units of {med['name']})", "stock_adjustment", adjustment_id)
+        return jsonify({'success': True, 'message': 'Inventory adjustment logged and catalog updated successfully!'})
+    except Exception as e:
+        if conn:
+            conn.rollback()
             conn.close()
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
